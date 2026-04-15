@@ -33,3 +33,5 @@ test_results.json
 
 # Logs
 *.log
+
+poetry.lock
