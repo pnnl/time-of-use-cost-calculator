@@ -1,0 +1,35 @@
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter notebooks
+*.ipynb
+/dev
+
+# Python virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test outputs and results
+tests/test_outputs/
+test_results.json
+
+# Data files (comment out if you want to track specific CSV files)
+*.csv
+
+# Logs
+*.log
