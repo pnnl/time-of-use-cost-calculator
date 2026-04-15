@@ -400,7 +400,7 @@ if __name__ == "__main__":
         name
         for name, result in all_results.items()
         if not result.get("energy_cost_calculator", {}).get("success")
-                or not result.get("tou_calculator", {}).get("success")
+        or not result.get("tou_calculator", {}).get("success")
     ]
 
     tolerance = 0.01  # $0.01 tolerance
