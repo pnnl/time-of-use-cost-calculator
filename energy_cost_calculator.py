@@ -535,21 +535,21 @@ class EnergyCostCalculator:
         if "fixedchargeunits" in self.rate:
             units = self.rate["fixedchargeunits"]
             if units == "$/day":
-                days = self.data.index.date.nunique()
+                days = len(pd.unique(self.data.index.date))
                 fixed_charge_cost = days * (
                     self.rate.get("fixedchargefirstmeter", 0)
                     + self.rate.get("fixedchargeeaaddlmeter", 0)
                     * (self.number_of_meters - 1)
                 )
             elif units == "$/month":
-                months = self.data.index.month.nunique()
+                months = len(pd.unique(self.data.index.month))
                 fixed_charge_cost = months * (
                     self.rate.get("fixedchargefirstmeter", 0)
                     + self.rate.get("fixedchargeeaaddlmeter", 0)
                     * (self.number_of_meters - 1)
                 )
             elif units == "$/year":
-                years = self.data.index.year.nunique()
+                years = len(pd.unique(self.data.index.year))
                 fixed_charge_cost = years * (
                     self.rate.get("fixedchargefirstmeter", 0)
                     + self.rate.get("fixedchargeeaaddlmeter", 0)
@@ -560,7 +560,7 @@ class EnergyCostCalculator:
                     f"Unrecognized fixed charge units '{units}' for rate '{self.rate_label}'. Fixed charge cost will be set to 0."
                 )
         if "fixedmonthlycharge" in self.rate:
-            months = self.data.index.month.nunique()
+            months = len(pd.unique(self.data.index.month))
             fixed_charge_cost += months * self.rate["fixedmonthlycharge"]
         return fixed_charge_cost
 
@@ -817,8 +817,8 @@ class EnergyCostCalculator:
         # Add fixed charges by month
         if self.include_fixed_cost:
             monthly_fixed = (
-                fixed_cost / self.data.index.month.nunique()
-                if self.data.index.month.nunique() > 0
+                fixed_cost / len(pd.unique(self.data.index.month))
+                if len(pd.unique(self.data.index.month)) > 0
                 else 0
             )
             for month in range(1, 13):
