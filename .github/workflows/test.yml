@@ -33,7 +33,7 @@ jobs:
     
     - name: Load cached venv
       id: cached-poetry-dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: .venv
         key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
@@ -48,6 +48,9 @@ jobs:
     - name: Check code formatting with Black
       run: poetry run black --check --diff .
     
+    - name: Run unit tests
+      run: poetry run python -m pytest tests/test_energy_cost_calculator.py -v
+    
     - name: Run calculator comparison tests
       run: |
         cd tests
@@ -55,7 +58,7 @@ jobs:
     
     - name: Upload test results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: test-results-python-${{ matrix.python-version }}
         path: |
