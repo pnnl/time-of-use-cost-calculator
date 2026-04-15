@@ -309,9 +309,10 @@ class CalculatorComparison:
 if __name__ == "__main__":
     import glob
 
-    # Configuration
-    simulation_folder = "data/sample_simulation_output"
-    rates_folder = "../sample_rates"
+    # Configuration - use paths relative to the script location
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    simulation_folder = os.path.join(script_dir, "data", "sample_simulation_output")
+    rates_folder = os.path.join(os.path.dirname(script_dir), "sample_rates")
     year = 2017  # Year for datetime conversion
 
     # Get all CSV files in simulation folder

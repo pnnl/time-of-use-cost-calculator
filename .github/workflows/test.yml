@@ -52,9 +52,7 @@ jobs:
       run: poetry run python -m pytest tests/test_energy_cost_calculator.py -v
     
     - name: Run calculator comparison tests
-      run: |
-        cd tests
-        poetry run python test_calculator_comparison.py
+      run: poetry run python tests/test_calculator_comparison.py
     
     - name: Upload test results
       if: always()
