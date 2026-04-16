@@ -181,7 +181,7 @@ class TestFixedCharges(unittest.TestCase):
             "label": "test_rate",
             "fixedchargeunits": "$/month",
             "fixedchargefirstmeter": 10.0,
-            "fixedchargeeaaddlmeter": 5.0,
+            "fixedchargeeaaddl": 5.0,
         }
 
         calculator = EnergyCostCalculator(
@@ -202,7 +202,7 @@ class TestFixedCharges(unittest.TestCase):
             "label": "test_rate",
             "fixedchargeunits": "$/day",
             "fixedchargefirstmeter": 1.0,
-            "fixedchargeeaaddlmeter": 0.5,
+            "fixedchargeeaaddl": 0.5,
         }
 
         calculator = EnergyCostCalculator(
