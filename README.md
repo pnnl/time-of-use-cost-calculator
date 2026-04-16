@@ -154,5 +154,10 @@ repo/
     └── references/tou_calculator.py
 ```
 
+## OpenEI
+
+### Expanded Schema
+https://allissa-balint.com/images/updated_urdb_util_rates.pdf
+
 ### Problematic Rates
 - https://apps.openei.org/USURDB/rate/view/539f6adaec4f024411ec94db#3__Energy: Tier 4 shows max usage units as kWh/kW... so hours?
