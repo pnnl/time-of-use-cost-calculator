@@ -2,6 +2,8 @@
 
 A Python-based energy cost calculator that calculates energy costs from building simulation outputs (e.g., EnergyPlus) using utility rate structures from the OpenEI database or local JSON files. It provides cost calculations for complex rate structures including time-of-use energy rates, tiered pricing, flat and TOU demand charges, and fixed monthly fees.
 
+OpenEI API key sign-up: https://apps.openei.org/services/api/signup/
+
 ## Features
 
 - Time-of-use (TOU) energy rates
