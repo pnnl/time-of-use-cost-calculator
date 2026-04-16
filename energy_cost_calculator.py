@@ -55,9 +55,11 @@ class EnergyCostCalculator:
         number_of_meters=1,
         electricity_demand_var_name=None,
         add_adjustment_to_rate=True,
+        api_key=None,
     ):
         self.rate_label = rate_label
         self.rate_json_path = rate_json_path
+        self.api_key = api_key
         self.data = data
         self.include_demand_cost = include_demand_cost
         self.include_energy_cost = include_energy_cost
@@ -100,8 +102,13 @@ class EnergyCostCalculator:
                 return None
 
         elif self.rate_label is not None:
+            if self.api_key is None:
+                logging.error(
+                    "API key must be provided when using rate_label to fetch from OpenEI API."
+                )
+                return None
             try:
-                rate_data = get_by_label(label=self.rate_label)
+                rate_data = get_by_label(label=self.rate_label, apikey=self.api_key)
                 logging.info(f"Loaded rate from API using label: {self.rate_label}")
                 return rate_data
             except Exception as e:
@@ -529,7 +536,7 @@ class EnergyCostCalculator:
 
         Note:
             Supports fixed charges in $/day, $/month, and $/year units.
-            Accounts for both fixedchargefirstmeter and fixedchargeeaaddlmeter rates.
+            Accounts for both fixedchargefirstmeter and fixedchargeeaaddl rates.
         """
         fixed_charge_cost = 0
         if "fixedchargeunits" in self.rate:
@@ -538,21 +545,21 @@ class EnergyCostCalculator:
                 days = len(pd.unique(self.data.index.date))
                 fixed_charge_cost = days * (
                     self.rate.get("fixedchargefirstmeter", 0)
-                    + self.rate.get("fixedchargeeaaddlmeter", 0)
+                    + self.rate.get("fixedchargeeaaddl", 0)
                     * (self.number_of_meters - 1)
                 )
             elif units == "$/month":
                 months = len(pd.unique(self.data.index.month))
                 fixed_charge_cost = months * (
                     self.rate.get("fixedchargefirstmeter", 0)
-                    + self.rate.get("fixedchargeeaaddlmeter", 0)
+                    + self.rate.get("fixedchargeeaaddl", 0)
                     * (self.number_of_meters - 1)
                 )
             elif units == "$/year":
                 years = len(pd.unique(self.data.index.year))
                 fixed_charge_cost = years * (
                     self.rate.get("fixedchargefirstmeter", 0)
-                    + self.rate.get("fixedchargeeaaddlmeter", 0)
+                    + self.rate.get("fixedchargeeaaddl", 0)
                     * (self.number_of_meters - 1)
                 )
             else:
@@ -994,8 +1001,19 @@ Examples:
     parser.add_argument(
         "--rate-label",
         "-r",
-        required=True,
         help='OpenEI rate label identifier (e.g., "5ed5ada75457a39b23d4b03d")',
+    )
+
+    parser.add_argument(
+        "--rate-json-path",
+        "--tou-path",
+        help="Path to local rate JSON file (alternative to --rate-label)",
+    )
+
+    parser.add_argument(
+        "--api-key",
+        "-k",
+        help="OpenEI API key for fetching rate data from the API (required when using --rate-label)",
     )
 
     parser.add_argument(
@@ -1038,9 +1056,26 @@ Examples:
 
     args = parser.parse_args()
 
+    # Validate that either rate-label or rate-json-path is provided
+    if not args.rate_label and not args.rate_json_path:
+        logging.error("Error: Either --rate-label or --rate-json-path must be provided")
+        parser.print_help()
+        sys.exit(1)
+
+    # Validate that API key is provided when using rate-label
+    if args.rate_label and not args.api_key:
+        logging.error("Error: --api-key is required when using --rate-label")
+        parser.print_help()
+        sys.exit(1)
+
     # Validate file exists
     if not os.path.exists(args.data_file):
         logging.error(f"Error: File '{args.data_file}' does not exist")
+        sys.exit(1)
+
+    # Validate rate JSON file exists if provided
+    if args.rate_json_path and not os.path.exists(args.rate_json_path):
+        logging.error(f"Error: Rate JSON file '{args.rate_json_path}' does not exist")
         sys.exit(1)
 
     # Validate number of meters
@@ -1056,6 +1091,8 @@ Examples:
     # Perform cost calculation
     energy_cost_calculator = EnergyCostCalculator(
         rate_label=args.rate_label,
+        rate_json_path=getattr(args, "rate_json_path", None),
+        api_key=args.api_key,
         data=data_for_cost_calculation.data,
         include_demand_cost=True,
         include_energy_cost=True,
