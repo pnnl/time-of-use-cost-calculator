@@ -12,7 +12,7 @@ OpenEI API key sign-up: https://apps.openei.org/services/api/signup/
 - TOU demand charges
 - Fixed charges (daily, monthly, yearly)
 - Multiple meter support
-- Unit validation and conversion (W, kW, MW)
+- Unit validation and conversion (W, kW, MW, J)
 - Variable timestep support
 - Fuel adjustments (not yet implemented)
 - Coincident demand charges (not yet implemented)

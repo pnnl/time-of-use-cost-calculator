@@ -178,6 +178,8 @@ class EnergyCostCalculator:
             return value
         elif from_unit_lower == "mw":
             return value * 1000
+        elif from_unit_lower == "j":
+            return value / (3.6 * 10**6) if value > 0 else 0.0
         else:
             logging.warning(
                 f"Unknown power unit '{from_unit}'. Assuming it's already in kW."

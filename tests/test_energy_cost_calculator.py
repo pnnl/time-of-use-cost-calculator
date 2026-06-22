@@ -74,6 +74,8 @@ class TestUnitConversion(unittest.TestCase):
         self.assertAlmostEqual(self.calculator._convert_power_to_kw(5.0, "kW"), 5.0)
         # MW to kW
         self.assertAlmostEqual(self.calculator._convert_power_to_kw(0.001, "MW"), 1.0)
+        # Joule to kW
+        self.assertAlmostEqual(self.calculator._convert_power_to_kw(3600000, "J"), 1.0)
         # Case insensitive
         self.assertAlmostEqual(self.calculator._convert_power_to_kw(1000, "w"), 1.0)
 
