@@ -6,11 +6,17 @@ from helpers.energyplus_date_helpers import DateTimeEP
 
 class DataForCostCalculation:
     def __init__(
-        self, path_to_data_file, data_source="EnergyPlus", year=2000, use_holidays=False
+        self,
+        path_to_data_file,
+        data_source="EnergyPlus",
+        year=2000,
+        use_holidays=False,
+        skip_rows=0,
     ):
         self.path_to_data_file = path_to_data_file
         self.data_source = data_source
         self.use_holidays = use_holidays
+        self.skip_rows = skip_rows
         self.data = self.load_data()
         self.data = self.preprocess_data(year)
 
@@ -40,6 +46,9 @@ class DataForCostCalculation:
 
             # Remove any leading/trailing whitespace from column names
             data.columns = data.columns.str.strip()
+
+            if self.skip_rows > 0:
+                data = data.iloc[self.skip_rows :].reset_index(drop=True)
 
             return data
         except Exception as e:

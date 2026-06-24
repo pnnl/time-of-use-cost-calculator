@@ -667,7 +667,7 @@ class EnergyCostCalculator:
             rate_energy_structure_df = rate_energy["energyratestructure"]
             selected_tier = 0
             tier_found = False
-            for j, tier_row in rate_energy_structure_df.iterrows():
+            for _, tier_row in rate_energy_structure_df.iterrows():
                 max_kWh = (
                     tier_row.get("max", float("inf"))
                     if "max" in tier_row
@@ -735,6 +735,7 @@ class EnergyCostCalculator:
 
             # Convert usage to kWh using helper method
             usage = self._convert_power_to_kw(usage, demand_unit)
+
             cumulative_kWh += usage
 
             # Calculate charge
@@ -1037,6 +1038,13 @@ Examples:
     )
 
     parser.add_argument(
+        "--skip-rows",
+        type=int,
+        default=0,
+        help="Number of data rows to skip from the beginning of the CSV before processing (default: 0)",
+    )
+
+    parser.add_argument(
         "--export-detailed",
         action="store_true",
         help="Export detailed results to CSV files (timestep, daily, monthly aggregations)",
@@ -1085,7 +1093,7 @@ Examples:
 
     # Load and preprocess data
     data_for_cost_calculation = DataForCostCalculation(
-        args.data_file, args.data_source, args.year, args.use_holidays
+        args.data_file, args.data_source, args.year, args.use_holidays, args.skip_rows
     )
 
     # Perform cost calculation
