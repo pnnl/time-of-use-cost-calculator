@@ -415,11 +415,26 @@ class TestErrorHandling(unittest.TestCase):
 class TestDataLoader(unittest.TestCase):
     """Test DataForCostCalculation helper class."""
 
+    SAMPLE_CSV = os.path.join(
+        os.path.dirname(__file__),
+        "data",
+        "sample_simulation_output",
+        "ASHRAE901_OfficeMedium_STD2022_TampaMeter.csv",
+    )
+
     def test_data_loader_initialization(self):
         """Test that DataForCostCalculation initializes correctly."""
         # This test would require actual test data files
         # Skipping actual file loading test
         pass
+
+    def test_skip_rows(self):
+        """Test that skip_rows excludes the expected number of records."""
+        full = DataForCostCalculation(self.SAMPLE_CSV, "EnergyPlus", 2017)
+        skipped = DataForCostCalculation(
+            self.SAMPLE_CSV, "EnergyPlus", 2017, skip_rows=48
+        )
+        self.assertEqual(len(skipped.data), len(full.data) - 48)
 
 
 if __name__ == "__main__":

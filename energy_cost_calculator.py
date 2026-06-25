@@ -1088,6 +1088,13 @@ Examples:
     )
 
     parser.add_argument(
+        "--skip-rows",
+        type=int,
+        default=0,
+        help="Number of data rows to skip from the beginning of the CSV before processing (default: 0)",
+    )
+
+    parser.add_argument(
         "--energy-var",
         required=False,
         help='Column name for electricity energy data (e.g., "Electricity:Facility [kWh](Hourly)"). When provided, energy cost calculation uses this column directly instead of converting from demand.',
@@ -1148,7 +1155,7 @@ Examples:
 
     # Load and preprocess data
     data_for_cost_calculation = DataForCostCalculation(
-        args.data_file, args.data_source, args.year, args.use_holidays
+        args.data_file, args.data_source, args.year, args.use_holidays, args.skip_rows
     )
 
     # Perform cost calculation
