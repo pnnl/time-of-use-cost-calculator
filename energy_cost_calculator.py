@@ -30,6 +30,7 @@ class EnergyCostCalculator:
         include_fixed_cost (bool): Whether to calculate fixed charges.
         number_of_meters (int): Number of meters for fixed charge calculation.
         electricity_demand_var_name (str): Column name for electricity demand data.
+        electricity_energy_var_name (str): Column name for electricity energy data (e.g., "Electricity:Facility [kWh](Hourly)"). When provided, energy cost calculation uses this column directly instead of converting from demand.
         add_adjustment_to_rate (bool): Whether to apply rate adjustments.
         rate (dict): Loaded rate structure data.
 
@@ -54,6 +55,7 @@ class EnergyCostCalculator:
         include_fixed_cost=False,
         number_of_meters=1,
         electricity_demand_var_name=None,
+        electricity_energy_var_name=None,
         add_adjustment_to_rate=True,
         api_key=None,
     ):
@@ -75,6 +77,7 @@ class EnergyCostCalculator:
         self.rate = self._load_rate()
 
         self.electricity_demand_var_name = electricity_demand_var_name
+        self.electricity_energy_var_name = electricity_energy_var_name
         self.add_adjustment_to_rate = add_adjustment_to_rate
 
     def _load_rate(self):
@@ -181,6 +184,31 @@ class EnergyCostCalculator:
         else:
             logging.warning(
                 f"Unknown power unit '{from_unit}'. Assuming it's already in kW."
+            )
+            return value
+
+    def _convert_power_to_kwh(self, value, from_unit):
+        """Convert energy value to kWh.
+
+        Args:
+            value (float): Energy value to convert.
+            from_unit (str): Source unit ('J', 'Wh', 'kWh', 'MWh').
+
+        Returns:
+            float: Value converted to kWh.
+        """
+        from_unit_lower = from_unit.lower()
+        if from_unit_lower == "j":
+            return value / 3_600_000
+        elif from_unit_lower == "wh":
+            return value / 1000
+        elif from_unit_lower == "kwh":
+            return value
+        elif from_unit_lower == "mwh":
+            return value * 1000
+        else:
+            logging.warning(
+                f"Unknown energy unit '{from_unit}'. Assuming it's already in kWh."
             )
             return value
 
@@ -575,7 +603,8 @@ class EnergyCostCalculator:
         """Calculate energy charges based on consumption and rate structure.
 
         Computes energy charges using time-of-use rates and tiered pricing structures.
-        Handles variable timesteps and different power units (W, kW, MW).
+        When electricity_energy_var_name is set, uses actual energy data directly.
+        Otherwise, converts demand data (W, kW, MW) to kWh using timestep duration.
 
         Args:
             add_adjustment_to_rate (bool): Whether to apply rate adjustments. Defaults to True.
@@ -588,9 +617,11 @@ class EnergyCostCalculator:
             'energy_charge_rate', and 'fraction_of_hour'.
             Supports cumulative tiered pricing based on total kWh consumption.
         """
-        if self.electricity_demand_var_name is None:
+        use_energy_var = self.electricity_energy_var_name is not None
+
+        if not use_energy_var and self.electricity_demand_var_name is None:
             logging.error(
-                "Electricity demand variable name must be provided for energy cost calculation."
+                "Either electricity_energy_var_name or electricity_demand_var_name must be provided for energy cost calculation."
             )
             return 0
 
@@ -603,28 +634,44 @@ class EnergyCostCalculator:
             return 0
         day_type_var_name = day_type_var_cols[0]
 
-        demand_var_cols = [
-            col
-            for col in self.data.columns
-            if col.lower() == self.electricity_demand_var_name.lower()
-        ]
-        if not demand_var_cols:
-            logging.error(
-                f"Electricity demand variable '{self.electricity_demand_var_name}' not found in data columns."
-            )
-            return 0
-        demand_var_name = demand_var_cols[0]
-
-        # Extract demand unit from variable name
-        demand_unit = self._extract_unit_from_column_name(demand_var_name)
-        if demand_unit is None:
-            logging.warning(
-                f"Could not extract demand unit from variable name '{demand_var_name}'. Assuming demand is in watts (W)."
-            )
-            demand_unit = "W"
-
-        # Validate units match between data and rate
-        self._validate_demand_units(demand_unit)
+        if use_energy_var:
+            energy_var_cols = [
+                col
+                for col in self.data.columns
+                if col.lower() == self.electricity_energy_var_name.lower()
+            ]
+            if not energy_var_cols:
+                logging.error(
+                    f"Electricity energy variable '{self.electricity_energy_var_name}' not found in data columns."
+                )
+                return 0
+            energy_var_name = energy_var_cols[0]
+            energy_unit = self._extract_unit_from_column_name(energy_var_name)
+            if energy_unit is None:
+                logging.warning(
+                    f"Could not extract energy unit from variable name '{energy_var_name}'. Assuming kWh."
+                )
+                energy_unit = "kWh"
+            self._validate_energy_units(energy_unit)
+        else:
+            demand_var_cols = [
+                col
+                for col in self.data.columns
+                if col.lower() == self.electricity_demand_var_name.lower()
+            ]
+            if not demand_var_cols:
+                logging.error(
+                    f"Electricity demand variable '{self.electricity_demand_var_name}' not found in data columns."
+                )
+                return 0
+            demand_var_name = demand_var_cols[0]
+            demand_unit = self._extract_unit_from_column_name(demand_var_name)
+            if demand_unit is None:
+                logging.warning(
+                    f"Could not extract demand unit from variable name '{demand_var_name}'. Assuming demand is in watts (W)."
+                )
+                demand_unit = "W"
+            self._validate_demand_units(demand_unit)
 
         # Convert rate to pandas dataframes
         rate = get_processed_data(self.rate)
@@ -717,24 +764,28 @@ class EnergyCostCalculator:
                 )
                 charge_rate = 0
 
-            # Calculate time difference from previous timestamp in hours
-            if idx == self.data.index[0]:
-                # For first timestep, assume standard interval from next timestep
-                if len(self.data.index) > 1:
-                    time_diff_hours = (
-                        self.data.index[1] - self.data.index[0]
-                    ).total_seconds() / 3600
-                else:
-                    time_diff_hours = 1.0  # Default to 1 hour if only one timestep
+            if use_energy_var:
+                # Use actual energy data directly
+                usage = self._convert_power_to_kwh(row[energy_var_name], energy_unit)
+                time_diff_hours = 0.0
             else:
-                prev_idx = self.data.index[self.data.index.get_loc(idx) - 1]
-                time_diff_hours = (idx - prev_idx).total_seconds() / 3600
+                # Calculate time difference from previous timestamp in hours
+                if idx == self.data.index[0]:
+                    # For first timestep, assume standard interval from next timestep
+                    if len(self.data.index) > 1:
+                        time_diff_hours = (
+                            self.data.index[1] - self.data.index[0]
+                        ).total_seconds() / 3600
+                    else:
+                        time_diff_hours = 1.0  # Default to 1 hour if only one timestep
+                else:
+                    prev_idx = self.data.index[self.data.index.get_loc(idx) - 1]
+                    time_diff_hours = (idx - prev_idx).total_seconds() / 3600
 
-            # Demand to energy
-            usage = time_diff_hours * row[demand_var_name]
+                # Demand to energy
+                usage = time_diff_hours * row[demand_var_name]
+                usage = self._convert_power_to_kw(usage, demand_unit)
 
-            # Convert usage to kWh using helper method
-            usage = self._convert_power_to_kw(usage, demand_unit)
             cumulative_kWh += usage
 
             # Calculate charge
@@ -1032,7 +1083,7 @@ Examples:
 
     parser.add_argument(
         "--demand-var",
-        required=True,
+        required=False,
         help='Column name for electricity demand data (e.g., "Electricity:Facility [W](Hourly)")',
     )
 
@@ -1041,6 +1092,12 @@ Examples:
         type=int,
         default=0,
         help="Number of data rows to skip from the beginning of the CSV before processing (default: 0)",
+    )
+
+    parser.add_argument(
+        "--energy-var",
+        required=False,
+        help='Column name for electricity energy data (e.g., "Electricity:Facility [kWh](Hourly)"). When provided, energy cost calculation uses this column directly instead of converting from demand.',
     )
 
     parser.add_argument(
@@ -1062,6 +1119,12 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    # Validate that at least one of demand-var or energy-var is provided
+    if not args.demand_var and not args.energy_var:
+        logging.error("Error: Either --demand-var or --energy-var must be provided")
+        parser.print_help()
+        sys.exit(1)
 
     # Validate that either rate-label or rate-json-path is provided
     if not args.rate_label and not args.rate_json_path:
@@ -1106,6 +1169,7 @@ Examples:
         include_fixed_cost=True,
         number_of_meters=args.number_of_meters,
         electricity_demand_var_name=args.demand_var,
+        electricity_energy_var_name=args.energy_var,
     )
     energy_cost = energy_cost_calculator.get_total_cost()
 
