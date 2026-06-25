@@ -75,6 +75,7 @@ class CalculatorComparison:
                 include_fixed_cost=True,
                 number_of_meters=1,
                 electricity_demand_var_name="Electricity:Facility [W](Hourly)",
+                electricity_energy_var_name="Electricity:Facility [kWh](Hourly)",
             )
 
             total_cost = calculator.get_total_cost()
