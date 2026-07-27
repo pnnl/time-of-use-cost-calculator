@@ -147,7 +147,6 @@ poetry run python tests/test_calculator_comparison.py
 
 ## Testing
 
-### Unit Tests (22 tests)
 
 Run with pytest from repo root:
 ```bash
@@ -328,8 +327,10 @@ class EnergyCostCalculator:
         include_energy_cost=False,          # Calculate energy charges
         include_fixed_cost=False,           # Calculate fixed charges
         number_of_meters=1,                 # Number of meters (≥1)
-        electricity_demand_var_name=None,   # Column name for demand
-        add_adjustment_to_rate=True         # Apply rate adjustments
+        electricity_demand_var_name=None,   # Column name for demand (W/kW/MW)
+        electricity_energy_var_name=None,   # Column name for energy (kWh); uses directly instead of converting from demand
+        add_adjustment_to_rate=True,        # Apply rate adjustments
+        api_key=None,                       # OpenEI API key (required with rate_label)
     )
     
     def get_total_cost(self, add_adjustment_to_rate=True) -> float
@@ -348,7 +349,8 @@ class DataForCostCalculation:
         path_to_data_file,     # Path to CSV file
         data_source,           # "EnergyPlus" or other
         year,                  # Year for datetime conversion
-        use_holidays=False     # Use US federal holidays
+        use_holidays=False,    # Use US federal holidays
+        skip_rows=0,           # Number of data rows to skip from the start (e.g., design days)
     )
     
     # Properties:
