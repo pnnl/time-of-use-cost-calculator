@@ -799,7 +799,7 @@ class EnergyCostCalculator:
 
         return self.data["energy_charge"].sum()
 
-    def get_summary(self):
+    def get_summary(self, add_adjustment_to_rate=True):
         """Generate a summary dictionary of all calculated costs.
 
         Returns:
@@ -808,7 +808,7 @@ class EnergyCostCalculator:
         summary = {}
 
         # Calculate totals
-        total_cost = self.get_total_cost()
+        total_cost = self.get_total_cost(add_adjustment_to_rate)
         energy_cost = (
             self.data["energy_charge"].sum()
             if "energy_charge" in self.data.columns
@@ -887,7 +887,9 @@ class EnergyCostCalculator:
 
         return summary
 
-    def export_detailed_results(self, output_folder="outputs", case_name="case"):
+    def export_detailed_results(
+        self, output_folder="outputs", case_name="case", add_adjustment_to_rate=True
+    ):
         """Export detailed calculation results to CSV files.
 
         Creates multiple CSV files with timestep, daily, and monthly aggregations
@@ -896,6 +898,7 @@ class EnergyCostCalculator:
         Args:
             output_folder (str): Folder path where CSV files will be saved. Defaults to 'outputs'.
             case_name (str): Prefix for output file names. Defaults to 'case'.
+            add_adjustment_to_rate (bool): Whether to apply rate adjustments. Defaults to True.
 
         Returns:
             dict: Dictionary with paths to all created files.
@@ -982,7 +985,7 @@ class EnergyCostCalculator:
             logging.info(f"Saved demand monthly data: {demand_monthly_file}")
 
         # 5. Save summary
-        summary = self.get_summary()
+        summary = self.get_summary(add_adjustment_to_rate)
         summary_df = pd.DataFrame([summary])
         summary_file = os.path.join(output_folder, f"{case_name}_summary.csv")
         summary_df.to_csv(summary_file, index=False)
@@ -997,16 +1000,19 @@ class EnergyCostCalculator:
 
         return output_files
 
-    def export_summary_only(self, output_path="summary.csv"):
+    def export_summary_only(
+        self, output_path="summary.csv", add_adjustment_to_rate=True
+    ):
         """Export only the summary results to a single CSV file.
 
         Args:
             output_path (str): Path where the summary CSV will be saved. Defaults to 'summary.csv'.
+            add_adjustment_to_rate (bool): Whether to apply rate adjustments. Defaults to True.
 
         Returns:
             str: Path to the created summary file.
         """
-        summary = self.get_summary()
+        summary = self.get_summary(add_adjustment_to_rate)
         summary_df = pd.DataFrame([summary])
         summary_df.to_csv(output_path, index=False)
         logging.info(f"Saved summary to: {output_path}")
@@ -1118,6 +1124,14 @@ Examples:
         help="Case name prefix for output files (default: case)",
     )
 
+    parser.add_argument(
+        "--no-adjustments",
+        dest="add_adjustment_to_rate",
+        action="store_false",
+        default=True,
+        help="Disable rate adjustments when calculating costs (default: adjustments enabled)",
+    )
+
     args = parser.parse_args()
 
     # Validate that at least one of demand-var or energy-var is provided
@@ -1171,12 +1185,14 @@ Examples:
         electricity_demand_var_name=args.demand_var,
         electricity_energy_var_name=args.energy_var,
     )
-    energy_cost = energy_cost_calculator.get_total_cost()
+    energy_cost = energy_cost_calculator.get_total_cost(args.add_adjustment_to_rate)
 
     # Export detailed results if requested
     if args.export_detailed:
         output_files = energy_cost_calculator.export_detailed_results(
-            output_folder=args.output_folder, case_name=args.case_name
+            output_folder=args.output_folder,
+            case_name=args.case_name,
+            add_adjustment_to_rate=args.add_adjustment_to_rate,
         )
         print(f"\nExported detailed results to: {args.output_folder}/")
         for file_type, file_path in output_files.items():

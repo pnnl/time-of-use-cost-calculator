@@ -49,6 +49,7 @@ poetry run python energy_cost_calculator.py \
   --data-source energyplus \
   --year 2023 \
   --rate-label "5ed5ada75457a39b23d4b03d" \
+  --api-key "<your_openei_api_key>" \
   --number-of-meters 1 \
   --demand-var "Electricity:Facility [W](Hourly)"
 ```
@@ -69,6 +70,7 @@ python energy_cost_calculator.py \
   --data-source energyplus \
   --year 2023 \
   --rate-label "5ed5ada75457a39b23d4b03d" \
+  --api-key "<your_openei_api_key>" \
   --number-of-meters 1 \
   --demand-var "Electricity:Facility [W](Hourly)"
 ```
@@ -82,19 +84,19 @@ python energy_cost_calculator.py \
   --data-file tests/data/sample_simulation_output/ASHRAE901_OfficeMedium_STD2022_TampaMeter.csv \
   --data-source energyplus \
   --year 2023 \
-  --rate-file sample_rates/ashrae_in_openei_query_format.json \
+  --rate-json-path sample_rates/ashrae_in_openei_query_format.json \
   --number-of-meters 1 \
   --demand-var "Electricity:Facility [W](Hourly)"
 ```
 
-Note: Use `--rate-file` instead of `--rate-label` when providing a local JSON file.
+Note: Use `--rate-json-path` instead of `--rate-label` when providing a local JSON file.
 
 ### Exporting Detailed Results
 
 To export detailed cost calculation results to CSV files, use the `--export-detailed` flag:
 
 ```bash
-python energy_cost_calculator.py   --data-file tests/data/sample_simulation_output/ASHRAE901_OfficeMedium_STD2022_TampaMeter.csv   --data-source energyplus   --year 2023   --rate-file sample_rates/ashrae_in_openei_query_format.json   --number-of-meters 1   --demand-var "Electricity:Facility [W](Hourly)"   --export-detailed
+python energy_cost_calculator.py   --data-file tests/data/sample_simulation_output/ASHRAE901_OfficeMedium_STD2022_TampaMeter.csv   --data-source energyplus   --year 2023   --rate-json-path sample_rates/ashrae_in_openei_query_format.json   --number-of-meters 1   --demand-var "Electricity:Facility [W](Hourly)"   --export-detailed
 ```
 
 This will create the following CSV files in the `outputs/` folder:
@@ -108,8 +110,75 @@ This will create the following CSV files in the `outputs/` folder:
 **Customize output location and file names:**
 
 ```bash
-python energy_cost_calculator.py   --data-file tests/data/sample_simulation_output/ASHRAE901_OfficeMedium_STD2022_TampaMeter.csv   --data-source energyplus   --year 2023   --rate-file sample_rates/ashrae_in_openei_query_format.json   --number-of-meters 1   --demand-var "Electricity:Facility [W](Hourly)"   --export-detailed   --output-folder results   --case-name my_building_2023
+python energy_cost_calculator.py   --data-file tests/data/sample_simulation_output/ASHRAE901_OfficeMedium_STD2022_TampaMeter.csv   --data-source energyplus   --year 2023   --rate-json-path sample_rates/ashrae_in_openei_query_format.json   --number-of-meters 1   --demand-var "Electricity:Facility [W](Hourly)"   --export-detailed   --output-folder results   --case-name my_building_2023
 ```
+
+### Using an Energy Variable Directly
+
+If your simulation output includes energy data in kWh (rather than demand in W), use `--energy-var` instead of (or alongside) `--demand-var`:
+
+```bash
+python energy_cost_calculator.py \
+  --data-file tests/data/sample_simulation_output/ASHRAE901_OfficeMedium_STD2022_TampaMeter.csv \
+  --data-source energyplus \
+  --year 2023 \
+  --rate-json-path sample_rates/ashrae_in_openei_query_format.json \
+  --number-of-meters 1 \
+  --energy-var "Electricity:Facility [kWh](Hourly)"
+```
+
+### Skipping Design-Day Rows
+
+EnergyPlus outputs often include design-day records at the start. Use `--skip-rows` to exclude them:
+
+```bash
+python energy_cost_calculator.py \
+  --data-file tests/data/sample_simulation_output/ASHRAE901_OfficeMedium_STD2022_TampaMeter.csv \
+  --data-source energyplus \
+  --year 2023 \
+  --rate-json-path sample_rates/ashrae_in_openei_query_format.json \
+  --number-of-meters 1 \
+  --demand-var "Electricity:Facility [W](Hourly)" \
+  --skip-rows 48
+```
+
+### Disabling Rate Adjustments
+
+Rate adjustments (e.g. fuel adjustments embedded in the rate structure) are applied by default. Use `--no-adjustments` to disable them:
+
+```bash
+python energy_cost_calculator.py \
+  --data-file tests/data/sample_simulation_output/ASHRAE901_OfficeMedium_STD2022_TampaMeter.csv \
+  --data-source energyplus \
+  --year 2023 \
+  --rate-json-path sample_rates/ashrae_in_openei_query_format.json \
+  --number-of-meters 1 \
+  --demand-var "Electricity:Facility [W](Hourly)" \
+  --no-adjustments
+```
+
+## CLI Reference
+
+| Argument | Short | Required | Default | Description |
+|---|---|---|---|---|
+| `--data-file` | `-d` | Yes | — | Path to the energy data file |
+| `--data-source` | `-s` | Yes | — | Data format: `energyplus` or `csv` |
+| `--year` | `-y` | Yes | — | Calendar year for the data (e.g. `2023`) |
+| `--rate-label` | `-r` | One of† | — | OpenEI rate label (e.g. `"5ed5ada75457a39b23d4b03d"`) |
+| `--rate-json-path` | | One of† | — | Path to a local rate JSON file |
+| `--api-key` | `-k` | With `--rate-label` | — | OpenEI API key |
+| `--number-of-meters` | `-n` | Yes | — | Number of meters for fixed charge scaling (≥ 1) |
+| `--demand-var` | | One of‡ | — | Column name for demand data in W (e.g. `"Electricity:Facility [W](Hourly)"`) |
+| `--energy-var` | | One of‡ | — | Column name for energy data in kWh (e.g. `"Electricity:Facility [kWh](Hourly)"`) |
+| `--use-holidays` | | No | `False` | Treat holidays as non-weekdays in TOU schedules |
+| `--skip-rows` | | No | `0` | Number of data rows to skip at the start of the file |
+| `--no-adjustments` | | No | `False` | Disable rate adjustments during cost calculation |
+| `--export-detailed` | | No | `False` | Export per-timestep, daily, and monthly CSV results |
+| `--output-folder` | | No | `outputs` | Folder for exported CSV files |
+| `--case-name` | | No | `case` | Filename prefix for exported CSV files |
+
+† Exactly one of `--rate-label` or `--rate-json-path` must be provided.  
+‡ At least one of `--demand-var` or `--energy-var` must be provided.
 
 ### Running Tests
 
