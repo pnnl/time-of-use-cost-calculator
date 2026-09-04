@@ -470,6 +470,10 @@ class EnergyCostCalculator:
                     rate_demand_schedule = rate_demand[f"demandweekendschedule"]
 
                 rate_demand_structure_df = rate_demand[f"demandratestructure"]
+                if "period" not in rate_demand_structure_df.columns:
+                    raise ValueError(
+                        f"Demand rate structure for rate '{self.rate_label}' is missing a 'period' column."
+                    )
                 try:
                     rate_demand_period = rate_demand_schedule.loc[idx.month, idx.hour]
                 except KeyError:
@@ -477,6 +481,10 @@ class EnergyCostCalculator:
                         f"No rate schedule found for month {idx.month}, hour {idx.hour}. Skipping this timestep."
                     )
                     continue
+
+                rate_demand_structure_df = rate_demand_structure_df[
+                    rate_demand_structure_df["period"] == rate_demand_period
+                ]
 
                 # Get the rate for the current period
                 selected_tier = 0
@@ -688,7 +696,15 @@ class EnergyCostCalculator:
         self.data["energy_charge_rate"] = 0.0
         self.data["fraction_of_hour"] = 0.0
         cumulative_kWh = 0
+        current_month = None
         for idx, row in self.data.iterrows():
+            if idx.month != current_month:
+                if current_month is not None:
+                    logging.info(
+                        f"Month {current_month}: cumulative energy usage = {cumulative_kWh:.4f} kWh"
+                    )
+                cumulative_kWh = 0
+                current_month = idx.month
             # Get the rate period
             day_type = row[day_type_var_name]
             if (day_type >= 2) and (day_type <= 6):
@@ -712,9 +728,16 @@ class EnergyCostCalculator:
 
             # Get the rate for the current period and cumulative kWh based on the tiered structure
             rate_energy_structure_df = rate_energy["energyratestructure"]
+            if "period" not in rate_energy_structure_df.columns:
+                raise ValueError(
+                    f"Energy rate structure for rate '{self.rate_label}' is missing a 'period' column."
+                )
+            rate_energy_structure_df = rate_energy_structure_df[
+                rate_energy_structure_df["period"] == rate_energy_period
+            ]
             selected_tier = 0
             tier_found = False
-            for j, tier_row in rate_energy_structure_df.iterrows():
+            for _, tier_row in rate_energy_structure_df.iterrows():
                 max_kWh = (
                     tier_row.get("max", float("inf"))
                     if "max" in tier_row
@@ -797,6 +820,10 @@ class EnergyCostCalculator:
             self.data.at[idx, "energy_charge_rate"] = charge_rate
             self.data.at[idx, "fraction_of_hour"] = time_diff_hours
 
+        if current_month is not None:
+            logging.info(
+                f"Month {current_month}: cumulative energy usage = {cumulative_kWh:.4f} kWh"
+            )
         return self.data["energy_charge"].sum()
 
     def get_summary(self, add_adjustment_to_rate=True):
