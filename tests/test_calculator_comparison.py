@@ -37,7 +37,16 @@ except ImportError as e:
 class CalculatorComparison:
     """Framework to test and compare both energy cost calculators"""
 
-    def __init__(self, csv_path, rate_json_path, year=2017):
+    def __init__(
+        self,
+        csv_path,
+        rate_json_path,
+        year=2017,
+        demand_var_name="Electricity:Facility [W](Hourly)",
+        energy_var_name="Electricity:Facility [kWh](Hourly)",
+        skip_rows=0,
+        tou_csv_path=None,
+    ):
         """
         Initialize the comparison framework
 
@@ -45,10 +54,19 @@ class CalculatorComparison:
             csv_path: Path to the CSV file with energy data
             rate_json_path: Path to the rate JSON file
             year: Year for datetime conversion (default 2017)
+            demand_var_name: Column name for electricity demand data
+            energy_var_name: Column name for electricity energy data
+            skip_rows: Number of rows to skip at the start of the data
+            tou_csv_path: Optional separate CSV for the reference tou_calculator
+                          (e.g. a version with design-day rows pre-removed)
         """
         self.csv_path = csv_path
         self.rate_json_path = rate_json_path
         self.year = year
+        self.demand_var_name = demand_var_name
+        self.energy_var_name = energy_var_name
+        self.skip_rows = skip_rows
+        self.tou_csv_path = tou_csv_path if tou_csv_path is not None else csv_path
         self.results = {}
 
     def run_energy_cost_calculator(self):
@@ -64,6 +82,7 @@ class CalculatorComparison:
                 data_source="EnergyPlus",
                 year=self.year,
                 use_holidays=False,
+                skip_rows=self.skip_rows,
             )
 
             # Calculate costs
@@ -74,8 +93,8 @@ class CalculatorComparison:
                 include_energy_cost=True,
                 include_fixed_cost=True,
                 number_of_meters=1,
-                electricity_demand_var_name="Electricity:Facility [W](Hourly)",
-                electricity_energy_var_name="Electricity:Facility [kWh](Hourly)",
+                electricity_demand_var_name=self.demand_var_name,
+                electricity_energy_var_name=self.energy_var_name,
             )
 
             total_cost = calculator.get_total_cost()
@@ -138,10 +157,10 @@ class CalculatorComparison:
             # Run tou calculator
             results = tou_calculate_charge(
                 case="test_case",
-                epvars=self.csv_path,
+                epvars=self.tou_csv_path,
                 tou=rate_name,
                 tou_path=self.rate_json_path,
-                demand_var_name="Electricity:Facility [W](Hourly)",
+                demand_var_name=self.demand_var_name,
                 day_type_var_name="Environment:Site Day Type Index [](Hourly)",
                 dst_type_var_name="Environment:Site Daylight Saving Time Status [](Hourly)",
                 use_dst=False,
@@ -330,7 +349,35 @@ if __name__ == "__main__":
         print(f"ERROR: No rate files found in {rates_folder}")
         sys.exit(1)
 
-    print(f"\nFound {len(csv_files)} simulation file(s)")
+    # Per-file variable name configuration.
+    # tou_csv_path points to a pre-processed CSV for the reference tou_calculator, which
+    # does not support skip_rows. 2017 and 2023 share the same weekday/weekend pattern
+    # (both start on Sunday, neither is a leap year), so the reference's hardcoded
+    # year=2017 is compatible with our year=2023 for the NY file.
+    FILE_CONFIG = {
+        "ASHRAE901_OfficeMedium_STD2022_TampaMeter": {
+            "demand_var_name": "Electricity:Facility [W](Hourly)",
+            "energy_var_name": "Electricity:Facility [kWh](Hourly)",
+            "skip_rows": 0,
+        },
+        "NY_NYC_SF_CZ4A_hp_slab_IECC_2024_yes": {
+            "demand_var_name": "Whole Building:Facility Net Purchased Electricity Rate [W](Hourly)",
+            "energy_var_name": "ElectricityNet:Facility [kWh](Hourly)",
+            "skip_rows": 48,
+            "year": 2023,
+            "tou_csv_path": os.path.join(
+                simulation_folder,
+                "NY_NYC_SF_CZ4A_hp_slab_IECC_2024_yes_no_design_days.csv",
+            ),
+        },
+    }
+
+    # Filter to only files that have an explicit config entry
+    csv_files = [
+        f for f in csv_files if os.path.basename(f).replace(".csv", "") in FILE_CONFIG
+    ]
+
+    print(f"\nFound {len(csv_files)} simulation file(s) with config")
     print(f"Found {len(rate_files)} rate file(s)")
     print(f"Will run {len(csv_files) * len(rate_files)} test combination(s)\n")
 
@@ -340,6 +387,7 @@ if __name__ == "__main__":
     # Run comparison for each combination
     for csv_path in csv_files:
         csv_name = os.path.basename(csv_path).replace(".csv", "")
+        file_cfg = FILE_CONFIG.get(csv_name, {})
 
         for rate_path in rate_files:
             rate_name = os.path.basename(rate_path).replace(
@@ -351,9 +399,13 @@ if __name__ == "__main__":
             print(f"TEST: {test_name}")
             print("=" * 80)
 
-            # Run comparison
+            # Run comparison (file_cfg may override the default year)
+            cfg = dict(file_cfg)
             comparison = CalculatorComparison(
-                csv_path=csv_path, rate_json_path=rate_path, year=year
+                csv_path=csv_path,
+                rate_json_path=rate_path,
+                year=cfg.pop("year", year),
+                **cfg,
             )
 
             comparison.run_all(save_output=False)

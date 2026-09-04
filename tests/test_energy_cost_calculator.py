@@ -437,6 +437,64 @@ class TestDataLoader(unittest.TestCase):
         self.assertEqual(len(skipped.data), len(full.data) - 48)
 
 
+class TestNYCRateEnergyCost(unittest.TestCase):
+    """Integration tests for energy cost calculation using NYC utility rate and EnergyPlus simulation output."""
+
+    SAMPLE_CSV = os.path.join(
+        os.path.dirname(__file__),
+        "data",
+        "sample_simulation_output",
+        "NY_NYC_SF_CZ4A_hp_slab_IECC_2024_yes.csv",
+    )
+    RATE_JSON = os.path.join(
+        os.path.dirname(__file__),
+        "data",
+        "sample_simulation_output",
+        "Utility_NYC.json",
+    )
+    DEMAND_VAR = "Whole Building:Facility Net Purchased Electricity Rate [W](Hourly)"
+    ENERGY_VAR = "ElectricityNet:Facility [J](Hourly)"
+
+    def setUp(self):
+        loader = DataForCostCalculation(
+            self.SAMPLE_CSV, "EnergyPlus", 2023, skip_rows=48
+        )
+        self.calculator = EnergyCostCalculator(
+            rate_json_path=self.RATE_JSON,
+            data=loader.data,
+            include_energy_cost=True,
+            number_of_meters=1,
+            electricity_demand_var_name=self.DEMAND_VAR,
+            electricity_energy_var_name=self.ENERGY_VAR,
+        )
+        self.calculator.calculate_energy_cost()
+
+    def test_energy_charge_rate_may(self):
+        """Energy charge rate should be 0.16402 for all timesteps in May."""
+        may_rates = self.calculator.data.loc[
+            self.calculator.data.index.month == 5, "energy_charge_rate"
+        ]
+        self.assertTrue(len(may_rates) > 0, "No data found for May")
+        self.assertTrue(
+            (may_rates.round(5) == 0.16402).all(),
+            f"Unexpected May charge rates: {may_rates.unique()}",
+        )
+
+    def test_energy_charge_total_june(self):
+        """Total energy charge for June should be approximately $203.14."""
+        june_total = self.calculator.data.loc[
+            self.calculator.data.index.month == 6, "energy_charge"
+        ].sum()
+        self.assertAlmostEqual(june_total, 203.14, places=1)
+
+    def test_energy_charge_total_july(self):
+        """Total energy charge for July should be approximately $241.80."""
+        july_total = self.calculator.data.loc[
+            self.calculator.data.index.month == 7, "energy_charge"
+        ].sum()
+        self.assertAlmostEqual(july_total, 241.80, places=1)
+
+
 if __name__ == "__main__":
     # Run tests with verbosity
     unittest.main(verbosity=2)
