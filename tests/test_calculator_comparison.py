@@ -373,7 +373,9 @@ if __name__ == "__main__":
     }
 
     # Filter to only files that have an explicit config entry
-    csv_files = [f for f in csv_files if os.path.basename(f).replace(".csv", "") in FILE_CONFIG]
+    csv_files = [
+        f for f in csv_files if os.path.basename(f).replace(".csv", "") in FILE_CONFIG
+    ]
 
     print(f"\nFound {len(csv_files)} simulation file(s) with config")
     print(f"Found {len(rate_files)} rate file(s)")
