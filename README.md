@@ -48,7 +48,7 @@ poetry run python energy_cost_calculator.py \
   --data-file tests/data/sample_simulation_output/ASHRAE901_OfficeMedium_STD2022_TampaMeter.csv \
   --data-source energyplus \
   --year 2023 \
-  --rate-label "5ed5ada75457a39b23d4b03d" \
+  --rate-label "67e97637499bc4a42604d6fb" \
   --api-key "<your_openei_api_key>" \
   --number-of-meters 1 \
   --demand-var "Electricity:Facility [W](Hourly)"
@@ -69,7 +69,7 @@ python energy_cost_calculator.py \
   --data-file tests/data/sample_simulation_output/ASHRAE901_OfficeMedium_STD2022_TampaMeter.csv \
   --data-source energyplus \
   --year 2023 \
-  --rate-label "5ed5ada75457a39b23d4b03d" \
+  --rate-label "67e97637499bc4a42604d6fb" \
   --api-key "<your_openei_api_key>" \
   --number-of-meters 1 \
   --demand-var "Electricity:Facility [W](Hourly)"
