@@ -164,7 +164,7 @@ python energy_cost_calculator.py \
 | `--data-file` | `-d` | Yes | — | Path to the energy data file |
 | `--data-source` | `-s` | Yes | — | Data format: `energyplus` or `csv` |
 | `--year` | `-y` | Yes | — | Calendar year for the data (e.g. `2023`) |
-| `--rate-label` | `-r` | One of† | — | OpenEI rate label (e.g. `"5ed5ada75457a39b23d4b03d"`) |
+| `--rate-label` | `-r` | One of† | — | OpenEI rate label (e.g. `"67e97637499bc4a42604d6fb"`) |
 | `--rate-json-path` | | One of† | — | Path to a local rate JSON file |
 | `--api-key` | `-k` | With `--rate-label` | — | OpenEI API key |
 | `--number-of-meters` | `-n` | Yes | — | Number of meters for fixed charge scaling (≥ 1) |

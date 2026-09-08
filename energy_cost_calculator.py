@@ -1053,9 +1053,9 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python energy_cost_calculator.py --data-file meter_data.csv --data-source energyplus --year 2023 --rate-label "5ed5ada75457a39b23d4b03d" --number-of-meters 1 --use-holidays --demand-var "Electricity:Facility [W](Hourly)"
+  python energy_cost_calculator.py --data-file meter_data.csv --data-source energyplus --year 2023 --rate-label "67e97637499bc4a42604d6fb" --number-of-meters 1 --use-holidays --demand-var "Electricity:Facility [W](Hourly)"
   
-  python energy_cost_calculator.py -d meter_data.csv -s energyplus -y 2023 -r "5ed5ada75457a39b23d4b03d" -n 1 --demand-var "Electricity:Facility [W](Hourly)"
+  python energy_cost_calculator.py -d meter_data.csv -s energyplus -y 2023 -r "67e97637499bc4a42604d6fb" -n 1 --demand-var "Electricity:Facility [W](Hourly)"
         """,
     )
 
@@ -1085,7 +1085,7 @@ Examples:
     parser.add_argument(
         "--rate-label",
         "-r",
-        help='OpenEI rate label identifier (e.g., "5ed5ada75457a39b23d4b03d")',
+        help='OpenEI rate label identifier (e.g., "67e97637499bc4a42604d6fb")',
     )
 
     parser.add_argument(
