@@ -1088,6 +1088,12 @@ Examples:
     )
 
     parser.add_argument(
+        "--datetime-col",
+        default=None,
+        help="Column name to use as datetime index (required when --data-source csv)",
+    )
+
+    parser.add_argument(
         "--year",
         "-y",
         required=True,
@@ -1207,9 +1213,19 @@ Examples:
         logging.error("Error: number_of_meters must be at least 1")
         sys.exit(1)
 
+    # Validate csv-specific arguments
+    if args.data_source == "csv" and not args.datetime_col:
+        logging.error("Error: --datetime-col is required when --data-source is csv")
+        sys.exit(1)
+
     # Load and preprocess data
     data_for_cost_calculation = DataForCostCalculation(
-        args.data_file, args.data_source, args.year, args.use_holidays, args.skip_rows
+        args.data_file,
+        args.data_source,
+        args.year,
+        args.use_holidays,
+        args.skip_rows,
+        datetime_col=args.datetime_col,
     )
 
     # Perform cost calculation

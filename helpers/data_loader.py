@@ -1,7 +1,12 @@
+import calendar
 import logging
 import pandas as pd
 
 from helpers.energyplus_date_helpers import DateTimeEP
+
+
+DAY_TYPE_FROM_WEEKDAY = {0: 2, 1: 3, 2: 4, 3: 5, 4: 6, 5: 7, 6: 1}
+DAY_TYPE_COL = "Environment:Site Day Type Index [](Hourly)"
 
 
 class DataForCostCalculation:
@@ -12,11 +17,13 @@ class DataForCostCalculation:
         year=2000,
         use_holidays=False,
         skip_rows=0,
+        datetime_col=None,
     ):
         self.path_to_data_file = path_to_data_file
         self.data_source = data_source
         self.use_holidays = use_holidays
         self.skip_rows = skip_rows
+        self.datetime_col = datetime_col
         self.data = self.load_data()
         self.data = self.preprocess_data(year)
 
@@ -95,5 +102,50 @@ class DataForCostCalculation:
             logging.debug("Data columns loaded successfully")
             if not self.use_holidays:
                 date_helper.do_not_apply_holidays(day_type_var_names[0])
+
+        elif self.data_source.lower() == "csv":
+            if self.datetime_col is None:
+                logging.error(
+                    "A datetime column name must be provided via datetime_col when data_source='csv'."
+                )
+                return None
+            if self.datetime_col not in self.data.columns:
+                logging.error(
+                    f"Datetime column '{self.datetime_col}' not found in data."
+                )
+                return None
+
+            self.data[self.datetime_col] = pd.to_datetime(self.data[self.datetime_col])
+            self.data = self.data.set_index(self.datetime_col)
+            if not calendar.isleap(year):
+                feb29_mask = (self.data.index.month == 2) & (self.data.index.day == 29)
+                if feb29_mask.any():
+                    logging.warning(
+                        f"Target year {year} is not a leap year; dropping {feb29_mask.sum()} "
+                        f"Feb 29 row(s) from the data."
+                    )
+                    self.data = self.data[~feb29_mask]
+            self.data.index = self.data.index.map(
+                lambda ts: ts.replace(year=year) if ts.year != year else ts
+            )
+
+            self.data[DAY_TYPE_COL] = self.data.index.weekday.map(DAY_TYPE_FROM_WEEKDAY)
+
+            if self.use_holidays:
+                try:
+                    import holidays as holidays_lib
+
+                    country_holidays = holidays_lib.country_holidays("US", years=year)
+                    for date, _ in self.data.groupby(self.data.index.date):
+                        if date in country_holidays:
+                            self.data.loc[
+                                self.data.index.date == date, DAY_TYPE_COL
+                            ] = 8
+
+                except ImportError:
+                    logging.warning(
+                        "The 'holidays' package is not installed; holiday detection skipped. "
+                        "Install it with: pip install holidays"
+                    )
 
         return self.data
