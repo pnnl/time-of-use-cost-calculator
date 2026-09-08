@@ -1,3 +1,4 @@
+import calendar
 import logging
 import pandas as pd
 
@@ -116,6 +117,14 @@ class DataForCostCalculation:
 
             self.data[self.datetime_col] = pd.to_datetime(self.data[self.datetime_col])
             self.data = self.data.set_index(self.datetime_col)
+            if not calendar.isleap(year):
+                feb29_mask = (self.data.index.month == 2) & (self.data.index.day == 29)
+                if feb29_mask.any():
+                    logging.warning(
+                        f"Target year {year} is not a leap year; dropping {feb29_mask.sum()} "
+                        f"Feb 29 row(s) from the data."
+                    )
+                    self.data = self.data[~feb29_mask]
             self.data.index = self.data.index.map(
                 lambda ts: ts.replace(year=year) if ts.year != year else ts
             )
