@@ -437,6 +437,98 @@ class TestDataLoader(unittest.TestCase):
         self.assertEqual(len(skipped.data), len(full.data) - 48)
 
 
+class TestCSVDataSource(unittest.TestCase):
+    """Verify that data_source='csv' produces identical costs to data_source='energyplus'
+    for the Tampa office building file with both the CONED and ASHRAE rates."""
+
+    SAMPLE_CSV = os.path.join(
+        os.path.dirname(__file__),
+        "data",
+        "sample_simulation_output",
+        "ASHRAE901_OfficeMedium_STD2022_TampaMeter.csv",
+    )
+    CONED_RATE = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "sample_rates",
+        "coned_in_openei_query_format.json",
+    )
+    ASHRAE_RATE = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "sample_rates",
+        "ashrae_in_openei_query_format.json",
+    )
+    DEMAND_VAR = "Electricity:Facility [W](Hourly)"
+    ENERGY_VAR = "Electricity:Facility [kWh](Hourly)"
+    YEAR = 2017
+
+    def _calculate(self, loader, rate_path):
+        calc = EnergyCostCalculator(
+            rate_json_path=rate_path,
+            data=loader.data,
+            include_demand_cost=True,
+            include_energy_cost=True,
+            include_fixed_cost=True,
+            number_of_meters=1,
+            electricity_demand_var_name=self.DEMAND_VAR,
+            electricity_energy_var_name=self.ENERGY_VAR,
+        )
+        calc.get_total_cost()
+        return calc
+
+    def _ep_and_csv_calcs(self, rate_path):
+        """Return (ep_calc, csv_calc) for the same data and rate."""
+        import tempfile
+
+        ep_loader = DataForCostCalculation(
+            self.SAMPLE_CSV, "EnergyPlus", self.YEAR, use_holidays=False
+        )
+        ep_calc = self._calculate(ep_loader, rate_path)
+
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+            tmp = f.name
+        try:
+            ep_loader.data.index.name = "Timestamp"
+            ep_loader.data.to_csv(tmp)
+            csv_loader = DataForCostCalculation(
+                tmp, "csv", self.YEAR, use_holidays=False, datetime_col="Timestamp"
+            )
+        finally:
+            os.unlink(tmp)
+
+        csv_calc = self._calculate(csv_loader, rate_path)
+        return ep_calc, csv_calc
+
+    def test_coned_rate_csv_matches_energyplus(self):
+        """CSV data source should produce the same costs as EnergyPlus for the CONED rate."""
+        ep_calc, csv_calc = self._ep_and_csv_calcs(self.CONED_RATE)
+        self.assertAlmostEqual(
+            csv_calc.data["energy_charge"].sum(),
+            ep_calc.data["energy_charge"].sum(),
+            places=2,
+        )
+        self.assertAlmostEqual(
+            csv_calc.data["demand_charge"].sum(),
+            ep_calc.data["demand_charge"].sum(),
+            places=2,
+        )
+
+    def test_ashrae_rate_csv_matches_energyplus(self):
+        """CSV data source should produce the same costs as EnergyPlus for the ASHRAE rate."""
+        ep_calc, csv_calc = self._ep_and_csv_calcs(self.ASHRAE_RATE)
+        self.assertAlmostEqual(
+            csv_calc.data["energy_charge"].sum(),
+            ep_calc.data["energy_charge"].sum(),
+            places=2,
+        )
+        self.assertAlmostEqual(
+            csv_calc.data["demand_charge"].sum(),
+            ep_calc.data["demand_charge"].sum(),
+            places=2,
+        )
+
+
 class TestNYCRateEnergyCost(unittest.TestCase):
     """Integration tests for energy cost calculation using NYC utility rate and EnergyPlus simulation output."""
 
