@@ -79,6 +79,8 @@ class EnergyCostCalculator:
         self.electricity_demand_var_name = electricity_demand_var_name
         self.electricity_energy_var_name = electricity_energy_var_name
         self.add_adjustment_to_rate = add_adjustment_to_rate
+        self._energy_cost_calculated = False
+        self._demand_cost_calculated = False
 
     def _load_rate(self):
         """Load rate data from either a JSON file or API using rate label.
@@ -320,6 +322,9 @@ class EnergyCostCalculator:
             Supports flat demand and time-of-use demand structures.
             Coincident demand structures are not currently supported.
         """
+        if self._demand_cost_calculated:
+            return self.data["demand_charge"].sum()
+
         if self.electricity_demand_var_name is None:
             logging.error(
                 "Electricity demand variable name must be provided for demand cost calculation."
@@ -559,6 +564,7 @@ class EnergyCostCalculator:
                 "The calculated demand costs may be lower than actual billed amounts."
             )
 
+        self._demand_cost_calculated = True
         return self.data["demand_charge"].sum()
 
     def calculate_fixed_charge_cost(self):
@@ -625,6 +631,9 @@ class EnergyCostCalculator:
             'energy_charge_rate', and 'fraction_of_hour'.
             Supports cumulative tiered pricing based on total kWh consumption.
         """
+        if self._energy_cost_calculated:
+            return self.data["energy_charge"].sum()
+
         use_energy_var = self.electricity_energy_var_name is not None
 
         if not use_energy_var and self.electricity_demand_var_name is None:
@@ -824,6 +833,7 @@ class EnergyCostCalculator:
             logging.info(
                 f"Month {current_month}: cumulative energy usage = {cumulative_kWh:.4f} kWh"
             )
+        self._energy_cost_calculated = True
         return self.data["energy_charge"].sum()
 
     def get_summary(self, add_adjustment_to_rate=True):
