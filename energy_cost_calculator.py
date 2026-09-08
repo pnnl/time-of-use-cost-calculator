@@ -189,7 +189,7 @@ class EnergyCostCalculator:
             )
             return value
 
-    def _convert_power_to_kwh(self, value, from_unit):
+    def _convert_energy_to_kwh(self, value, from_unit):
         """Convert energy value to kWh.
 
         Args:
@@ -255,9 +255,12 @@ class EnergyCostCalculator:
 
         if expected_unit:
             logging.info(f"Rate expects energy in: {expected_unit}")
-            logging.info(
-                f"Data provides power in: {data_unit}, will be converted to kWh"
-            )
+            if data_unit.lower() != "kwh":
+                logging.info(
+                    f"Data provides power in: {data_unit}, will be converted to kWh"
+                )
+            else:
+                logging.info(f"Data provides energy in: {data_unit}")
 
             # Verify conversion produces the expected unit
             if expected_unit.lower() != "kwh":
@@ -798,7 +801,7 @@ class EnergyCostCalculator:
 
             if use_energy_var:
                 # Use actual energy data directly
-                usage = self._convert_power_to_kwh(row[energy_var_name], energy_unit)
+                usage = self._convert_energy_to_kwh(row[energy_var_name], energy_unit)
                 time_diff_hours = 0.0
             else:
                 # Calculate time difference from previous timestamp in hours
