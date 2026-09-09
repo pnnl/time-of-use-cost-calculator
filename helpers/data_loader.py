@@ -99,8 +99,6 @@ class DataForCostCalculation:
                         day_type_col=day_type_var_names[0],
                         dst_type_col=dst_type_var_names[0],
                     )
-                    self.data["original_index"] = self.data.index
-                    self.data.index = self.data["DST_time"]
 
             logging.debug("Data columns loaded successfully")
             if not self.use_holidays:

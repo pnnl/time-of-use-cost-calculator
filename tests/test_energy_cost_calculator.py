@@ -436,6 +436,15 @@ class TestDataLoader(unittest.TestCase):
         )
         self.assertEqual(len(skipped.data), len(full.data) - 48)
 
+    def test_use_dst_keeps_unique_monotonic_index(self):
+        """DST-adjusted clock time should not replace the physical timeline index."""
+        loader = DataForCostCalculation(
+            self.SAMPLE_CSV, "EnergyPlus", 2017, use_dst=True
+        )
+        self.assertIn("DST_time", loader.data.columns)
+        self.assertTrue(loader.data.index.is_unique)
+        self.assertTrue(loader.data.index.is_monotonic_increasing)
+
 
 class TestNYCRateEnergyCost(unittest.TestCase):
     """Integration tests for energy cost calculation using NYC utility rate and EnergyPlus simulation output."""
