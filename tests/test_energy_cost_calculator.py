@@ -38,7 +38,7 @@ class TestUnitConversion(unittest.TestCase):
                 "Electricity:Facility [W](Hourly)": [1000, 2000, 3000],
                 "Environment:Site Day Type Index [](Hourly)": [2, 3, 4],
             },
-            index=pd.date_range("2023-01-01", periods=3, freq="H"),
+            index=pd.date_range("2023-01-01", periods=3, freq="h"),
         )
 
         self.calculator = EnergyCostCalculator(
@@ -94,7 +94,7 @@ class TestUnitValidation(unittest.TestCase):
                 "Electricity:Facility [W](Hourly)": [1000],
                 "Environment:Site Day Type Index [](Hourly)": [2],
             },
-            index=pd.date_range("2023-01-01", periods=1, freq="H"),
+            index=pd.date_range("2023-01-01", periods=1, freq="h"),
         )
 
         self.calculator = EnergyCostCalculator(
@@ -172,7 +172,7 @@ class TestFixedCharges(unittest.TestCase):
                 "Electricity:Facility [W](Hourly)": [1000] * 8760,
                 "Environment:Site Day Type Index [](Hourly)": [2] * 8760,
             },
-            index=pd.date_range("2023-01-01", periods=8760, freq="H"),
+            index=pd.date_range("2023-01-01", periods=8760, freq="h"),
         )
 
     def test_fixed_charge_monthly(self):
@@ -260,7 +260,7 @@ class TestGetSummary(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         # Create sample data with energy and demand charges
-        dates = pd.date_range("2023-01-01", periods=100, freq="H")
+        dates = pd.date_range("2023-01-01", periods=100, freq="h")
         self.data = pd.DataFrame(
             {
                 "Electricity:Facility [W](Hourly)": np.random.uniform(1000, 5000, 100),
@@ -325,7 +325,7 @@ class TestVariableTimestep(unittest.TestCase):
     def test_timestep_calculation(self):
         """Test that timestep fractions are calculated correctly."""
         # Create data with 15-minute intervals
-        dates = pd.date_range("2023-01-01", periods=10, freq="15T")
+        dates = pd.date_range("2023-01-01", periods=10, freq="15min")
         data = pd.DataFrame(
             {
                 "Electricity:Facility [W](Hourly)": [1000] * 10,
@@ -355,7 +355,7 @@ class TestErrorHandling(unittest.TestCase):
                 "SomeOtherVariable": [1000],
                 "Environment:Site Day Type Index [](Hourly)": [2],
             },
-            index=pd.date_range("2023-01-01", periods=1, freq="H"),
+            index=pd.date_range("2023-01-01", periods=1, freq="h"),
         )
 
         calculator = EnergyCostCalculator(
@@ -373,7 +373,7 @@ class TestErrorHandling(unittest.TestCase):
         """Test error when day type column is missing."""
         data = pd.DataFrame(
             {"Electricity:Facility [W](Hourly)": [1000]},
-            index=pd.date_range("2023-01-01", periods=1, freq="H"),
+            index=pd.date_range("2023-01-01", periods=1, freq="h"),
         )
 
         calculator = EnergyCostCalculator(
@@ -394,7 +394,7 @@ class TestErrorHandling(unittest.TestCase):
                 "Electricity:Facility [W](Hourly)": [1000],
                 "Environment:Site Day Type Index [](Hourly)": [2],
             },
-            index=pd.date_range("2023-01-01", periods=1, freq="H"),
+            index=pd.date_range("2023-01-01", periods=1, freq="h"),
         )
 
         calculator = EnergyCostCalculator(rate_json_path=None, data=data)

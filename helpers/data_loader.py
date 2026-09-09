@@ -12,11 +12,13 @@ class DataForCostCalculation:
         year=2000,
         use_holidays=False,
         skip_rows=0,
+        use_dst=False,
     ):
         self.path_to_data_file = path_to_data_file
         self.data_source = data_source
         self.use_holidays = use_holidays
         self.skip_rows = skip_rows
+        self.use_dst = use_dst
         self.data = self.load_data()
         self.data = self.preprocess_data(year)
 
@@ -86,11 +88,19 @@ class DataForCostCalculation:
             day_type_var_names = [
                 col for col in self.data.columns if "site day type index" in col.lower()
             ]
-            if len(dst_type_var_names) > 0 and len(day_type_var_names) > 0:
-                self.data = date_helper.add_dst_clocktime(
-                    day_type_col=day_type_var_names[0],
-                    dst_type_col=dst_type_var_names[0],
-                )
+            if self.use_dst:
+                if len(dst_type_var_names) == 0 or len(day_type_var_names) == 0:
+                    logging.warning(
+                        "use_dst=True but 'Site Daylight Saving Time Status' or "
+                        "'Site Day Type Index' column not found in data; skipping DST adjustment."
+                    )
+                else:
+                    self.data = date_helper.add_dst_clocktime(
+                        day_type_col=day_type_var_names[0],
+                        dst_type_col=dst_type_var_names[0],
+                    )
+                    self.data["original_index"] = self.data.index
+                    self.data.index = self.data["DST_time"]
 
             logging.debug("Data columns loaded successfully")
             if not self.use_holidays:

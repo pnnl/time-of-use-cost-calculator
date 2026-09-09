@@ -15,7 +15,7 @@ class DateTimeEP:
             self.dt_list.append(self.epstr2dt(row["Date/Time"]))
         self.df.index = self.dt_list
         self.df = self.df.shift(
-            periods=-1, freq="S"
+            periods=-1, freq="s"
         )  # shift index to mid hour for easy processing
         self.dt_list = self.df.index.tolist()
 

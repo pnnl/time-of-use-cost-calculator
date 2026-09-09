@@ -1128,6 +1128,12 @@ Examples:
     )
 
     parser.add_argument(
+        "--use-dst",
+        action="store_true",
+        help="Apply daylight saving time adjustment to timestamps (requires 'Site Daylight Saving Time Status' column in the data)",
+    )
+
+    parser.add_argument(
         "--demand-var",
         required=False,
         help='Column name for electricity demand data (e.g., "Electricity:Facility [W](Hourly)")',
@@ -1209,7 +1215,12 @@ Examples:
 
     # Load and preprocess data
     data_for_cost_calculation = DataForCostCalculation(
-        args.data_file, args.data_source, args.year, args.use_holidays, args.skip_rows
+        args.data_file,
+        args.data_source,
+        args.year,
+        args.use_holidays,
+        args.skip_rows,
+        use_dst=args.use_dst,
     )
 
     # Perform cost calculation
