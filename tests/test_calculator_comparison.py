@@ -7,10 +7,12 @@ against the same CSV data and compares their outputs.
 
 import sys
 import os
+import glob
 import json
 import pandas as pd
 from datetime import datetime
 import traceback
+import pytest
 
 # Add paths to import modules
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -46,6 +48,7 @@ class CalculatorComparison:
         energy_var_name="Electricity:Facility [kWh](Hourly)",
         skip_rows=0,
         tou_csv_path=None,
+        use_dst=False,
     ):
         """
         Initialize the comparison framework
@@ -67,6 +70,7 @@ class CalculatorComparison:
         self.energy_var_name = energy_var_name
         self.skip_rows = skip_rows
         self.tou_csv_path = tou_csv_path if tou_csv_path is not None else csv_path
+        self.use_dst = use_dst
         self.results = {}
 
     def run_energy_cost_calculator(self):
@@ -83,6 +87,7 @@ class CalculatorComparison:
                 year=self.year,
                 use_holidays=False,
                 skip_rows=self.skip_rows,
+                use_dst=self.use_dst,
             )
 
             # Calculate costs
@@ -163,7 +168,7 @@ class CalculatorComparison:
                 demand_var_name=self.demand_var_name,
                 day_type_var_name="Environment:Site Day Type Index [](Hourly)",
                 dst_type_var_name="Environment:Site Daylight Saving Time Status [](Hourly)",
-                use_dst=False,
+                use_dst=self.use_dst,
                 datetime_transform=True,
                 holiday=False,
                 test=False,
@@ -326,51 +331,99 @@ class CalculatorComparison:
             self.save_results()
 
 
+# Module-level path configuration (must be at module scope for pytest parametrize)
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_simulation_folder = os.path.join(_script_dir, "data", "sample_simulation_output")
+_rates_folder = os.path.join(os.path.dirname(_script_dir), "sample_rates")
+_default_year = 2017
+
+# Per-file variable name configuration.
+# tou_csv_path points to a pre-processed CSV for the reference tou_calculator, which
+# does not support skip_rows. 2017 and 2023 share the same weekday/weekend pattern
+# (both start on Sunday, neither is a leap year), so the reference's hardcoded
+# year=2017 is compatible with our year=2023 for the NY file.
+FILE_CONFIG = {
+    "ASHRAE901_OfficeMedium_STD2022_TampaMeter": {
+        "demand_var_name": "Electricity:Facility [W](Hourly)",
+        "energy_var_name": "Electricity:Facility [kWh](Hourly)",
+        "skip_rows": 0,
+        "use_dst": True,
+    },
+    "NY_NYC_SF_CZ4A_hp_slab_IECC_2024_yes": {
+        "demand_var_name": "Whole Building:Facility Net Purchased Electricity Rate [W](Hourly)",
+        "energy_var_name": "ElectricityNet:Facility [kWh](Hourly)",
+        "skip_rows": 48,
+        "year": 2023,
+        "tou_csv_path": os.path.join(
+            _simulation_folder,
+            "NY_NYC_SF_CZ4A_hp_slab_IECC_2024_yes_no_design_days.csv",
+        ),
+    },
+}
+
+
+def _get_test_params():
+    csv_names = sorted(
+        os.path.basename(f).replace(".csv", "")
+        for f in glob.glob(os.path.join(_simulation_folder, "*.csv"))
+        if os.path.basename(f).replace(".csv", "") in FILE_CONFIG
+    )
+    rate_names = sorted(
+        os.path.basename(f).replace("_in_openei_query_format.json", "")
+        for f in glob.glob(os.path.join(_rates_folder, "*.json"))
+    )
+
+    if not csv_names:
+        raise RuntimeError(
+            f"No configured simulation CSVs found in {_simulation_folder}"
+        )
+    if not rate_names:
+        raise RuntimeError(f"No rate JSON files found in {_rates_folder}")
+
+    return [(csv, rate) for csv in csv_names for rate in rate_names]
+
+
+@pytest.mark.parametrize("csv_name,rate_name", _get_test_params())
+def test_calculator_comparison(csv_name, rate_name):
+    cfg = dict(FILE_CONFIG.get(csv_name, {}))
+    year = cfg.pop("year", _default_year)
+    comparison = CalculatorComparison(
+        csv_path=os.path.join(_simulation_folder, f"{csv_name}.csv"),
+        rate_json_path=os.path.join(
+            _rates_folder, f"{rate_name}_in_openei_query_format.json"
+        ),
+        year=year,
+        **cfg,
+    )
+    comparison.run_energy_cost_calculator()
+    comparison.run_tou_calculator()
+
+    calc1 = comparison.results["energy_cost_calculator"]
+    calc2 = comparison.results["tou_calculator"]
+
+    assert calc1["success"], f"energy_cost_calculator failed: {calc1.get('error')}"
+    assert calc2["success"], f"tou_calculator failed: {calc2.get('error')}"
+
+    tolerance = 0.01
+    total_diff = abs(calc1["total_cost"] - calc2["total_cost"])
+    energy_diff = abs(calc1["energy_cost"] - calc2["energy_cost"])
+    demand_diff = abs(calc1["demand_cost"] - calc2["demand_cost"])
+    assert total_diff < tolerance, f"Total cost mismatch: ${total_diff:.2f}"
+    assert energy_diff < tolerance, f"Energy cost mismatch: ${energy_diff:.2f}"
+    assert demand_diff < tolerance, f"Demand cost mismatch: ${demand_diff:.2f}"
+
+
 if __name__ == "__main__":
-    import glob
-
-    # Configuration - use paths relative to the script location
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    simulation_folder = os.path.join(script_dir, "data", "sample_simulation_output")
-    rates_folder = os.path.join(os.path.dirname(script_dir), "sample_rates")
-    year = 2017  # Year for datetime conversion
-
-    # Get all CSV files in simulation folder
-    csv_files = glob.glob(os.path.join(simulation_folder, "*.csv"))
-
-    # Get all JSON rate files in sample_rates folder
-    rate_files = glob.glob(os.path.join(rates_folder, "*.json"))
+    csv_files = glob.glob(os.path.join(_simulation_folder, "*.csv"))
+    rate_files = glob.glob(os.path.join(_rates_folder, "*.json"))
 
     if not csv_files:
-        print(f"ERROR: No CSV files found in {simulation_folder}")
+        print(f"ERROR: No CSV files found in {_simulation_folder}")
         sys.exit(1)
 
     if not rate_files:
-        print(f"ERROR: No rate files found in {rates_folder}")
+        print(f"ERROR: No rate files found in {_rates_folder}")
         sys.exit(1)
-
-    # Per-file variable name configuration.
-    # tou_csv_path points to a pre-processed CSV for the reference tou_calculator, which
-    # does not support skip_rows. 2017 and 2023 share the same weekday/weekend pattern
-    # (both start on Sunday, neither is a leap year), so the reference's hardcoded
-    # year=2017 is compatible with our year=2023 for the NY file.
-    FILE_CONFIG = {
-        "ASHRAE901_OfficeMedium_STD2022_TampaMeter": {
-            "demand_var_name": "Electricity:Facility [W](Hourly)",
-            "energy_var_name": "Electricity:Facility [kWh](Hourly)",
-            "skip_rows": 0,
-        },
-        "NY_NYC_SF_CZ4A_hp_slab_IECC_2024_yes": {
-            "demand_var_name": "Whole Building:Facility Net Purchased Electricity Rate [W](Hourly)",
-            "energy_var_name": "ElectricityNet:Facility [kWh](Hourly)",
-            "skip_rows": 48,
-            "year": 2023,
-            "tou_csv_path": os.path.join(
-                simulation_folder,
-                "NY_NYC_SF_CZ4A_hp_slab_IECC_2024_yes_no_design_days.csv",
-            ),
-        },
-    }
 
     # Filter to only files that have an explicit config entry
     csv_files = [
@@ -404,7 +457,7 @@ if __name__ == "__main__":
             comparison = CalculatorComparison(
                 csv_path=csv_path,
                 rate_json_path=rate_path,
-                year=cfg.pop("year", year),
+                year=cfg.pop("year", _default_year),
                 **cfg,
             )
 

@@ -214,6 +214,13 @@ class EnergyCostCalculator:
             )
             return value
 
+    def _get_billing_timestamp(self, idx, row):
+        """Return the timestamp to use for schedule lookups."""
+        dst_time = row.get("DST_time")
+        if pd.notna(dst_time):
+            return dst_time
+        return idx
+
     def _validate_demand_units(self, data_unit):
         """Validate that demand units are compatible between data and rate.
 
@@ -470,6 +477,7 @@ class EnergyCostCalculator:
         if "demandratestructure" in rate_demand:
             # First pass: assign rate period to each timestep
             for idx, row in self.data.iterrows():
+                billing_idx = self._get_billing_timestamp(idx, row)
                 # Get the rate period
                 day_type = row[day_type_var_name]
                 if (day_type >= 2) and (day_type <= 6):
@@ -483,10 +491,12 @@ class EnergyCostCalculator:
                         f"Demand rate structure for rate '{self.rate_label}' is missing a 'period' column."
                     )
                 try:
-                    rate_demand_period = rate_demand_schedule.loc[idx.month, idx.hour]
+                    rate_demand_period = rate_demand_schedule.loc[
+                        billing_idx.month, billing_idx.hour
+                    ]
                 except KeyError:
                     logging.warning(
-                        f"No rate schedule found for month {idx.month}, hour {idx.hour}. Skipping this timestep."
+                        f"No rate schedule found for month {billing_idx.month}, hour {billing_idx.hour}. Skipping this timestep."
                     )
                     continue
 
@@ -710,13 +720,14 @@ class EnergyCostCalculator:
         cumulative_kWh = 0
         current_month = None
         for idx, row in self.data.iterrows():
-            if idx.month != current_month:
+            billing_idx = self._get_billing_timestamp(idx, row)
+            if billing_idx.month != current_month:
                 if current_month is not None:
                     logging.info(
                         f"Month {current_month}: cumulative energy usage = {cumulative_kWh:.4f} kWh"
                     )
                 cumulative_kWh = 0
-                current_month = idx.month
+                current_month = billing_idx.month
             # Get the rate period
             day_type = row[day_type_var_name]
             if (day_type >= 2) and (day_type <= 6):
@@ -724,10 +735,12 @@ class EnergyCostCalculator:
             else:
                 rate_energy_schedule = rate_energy["energyweekendschedule"]
             try:
-                rate_energy_period = rate_energy_schedule.loc[idx.month, idx.hour]
+                rate_energy_period = rate_energy_schedule.loc[
+                    billing_idx.month, billing_idx.hour
+                ]
             except KeyError:
                 logging.warning(
-                    f"No rate schedule found for month {idx.month}, hour {idx.hour}. Using tier 0."
+                    f"No rate schedule found for month {billing_idx.month}, hour {billing_idx.hour}. Using tier 0."
                 )
                 selected_tier = 0
                 charge_rate = 0
@@ -1128,6 +1141,12 @@ Examples:
     )
 
     parser.add_argument(
+        "--use-dst",
+        action="store_true",
+        help="Apply daylight saving time adjustment to timestamps (requires 'Site Daylight Saving Time Status' column in the data)",
+    )
+
+    parser.add_argument(
         "--demand-var",
         required=False,
         help='Column name for electricity demand data (e.g., "Electricity:Facility [W](Hourly)")',
@@ -1209,7 +1228,12 @@ Examples:
 
     # Load and preprocess data
     data_for_cost_calculation = DataForCostCalculation(
-        args.data_file, args.data_source, args.year, args.use_holidays, args.skip_rows
+        args.data_file,
+        args.data_source,
+        args.year,
+        args.use_holidays,
+        args.skip_rows,
+        use_dst=args.use_dst,
     )
 
     # Perform cost calculation
