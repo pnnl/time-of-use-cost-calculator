@@ -374,7 +374,9 @@ def _get_test_params():
     )
 
     if not csv_names:
-        raise RuntimeError(f"No configured simulation CSVs found in {_simulation_folder}")
+        raise RuntimeError(
+            f"No configured simulation CSVs found in {_simulation_folder}"
+        )
     if not rate_names:
         raise RuntimeError(f"No rate JSON files found in {_rates_folder}")
 
