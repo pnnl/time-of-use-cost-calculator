@@ -372,6 +372,12 @@ def _get_test_params():
         os.path.basename(f).replace("_in_openei_query_format.json", "")
         for f in glob.glob(os.path.join(_rates_folder, "*.json"))
     )
+
+    if not csv_names:
+        raise RuntimeError(f"No configured simulation CSVs found in {_simulation_folder}")
+    if not rate_names:
+        raise RuntimeError(f"No rate JSON files found in {_rates_folder}")
+
     return [(csv, rate) for csv in csv_names for rate in rate_names]
 
 
