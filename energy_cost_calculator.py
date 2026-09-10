@@ -214,6 +214,197 @@ class EnergyCostCalculator:
             )
             return value
 
+    def _convert_power_series_to_kw(self, values, from_unit):
+        """Vectorized conversion of a pandas Series from power units to kW."""
+        factors = {"w": 0.001, "kw": 1.0, "mw": 1000.0}
+        factor = factors.get(from_unit.lower())
+        if factor is None:
+            logging.warning(
+                f"Unknown power unit '{from_unit}'. Assuming it's already in kW."
+            )
+            factor = 1.0
+        return pd.to_numeric(values, errors="raise").astype(float) * factor
+
+    def _convert_energy_series_to_kwh(self, values, from_unit):
+        """Vectorized conversion of a pandas Series from energy units to kWh."""
+        factors = {"j": 1 / 3_600_000, "wh": 0.001, "kwh": 1.0, "mwh": 1000.0}
+        factor = factors.get(from_unit.lower())
+        if factor is None:
+            logging.warning(
+                f"Unknown energy unit '{from_unit}'. Assuming it's already in kWh."
+            )
+            factor = 1.0
+        return pd.to_numeric(values, errors="raise").astype(float) * factor
+
+    def _billing_datetime_index(self):
+        """Return vectorized timestamps used for tariff schedule lookups."""
+        billing_times = pd.Series(self.data.index, index=self.data.index)
+        if "DST_time" in self.data.columns:
+            dst_times = pd.to_datetime(self.data["DST_time"], errors="coerce")
+            has_dst_time = dst_times.notna()
+            billing_times.loc[has_dst_time] = dst_times.loc[has_dst_time]
+        return pd.DatetimeIndex(billing_times.to_numpy())
+
+    def _schedule_periods(self, weekday_schedule, weekend_schedule, day_type_var_name):
+        """Select a rate period for every timestep with NumPy array indexing."""
+        weekday_values = weekday_schedule.to_numpy()
+        weekend_values = weekend_schedule.to_numpy()
+        if weekday_values.shape != (12, 24) or weekend_values.shape != (12, 24):
+            return None
+
+        billing_times = self._billing_datetime_index()
+        months = billing_times.month.to_numpy() - 1
+        hours = billing_times.hour.to_numpy()
+        day_types = self.data[day_type_var_name].to_numpy()
+        is_weekday = (day_types >= 2) & (day_types <= 6)
+        periods = np.where(
+            is_weekday,
+            weekday_values[months, hours],
+            weekend_values[months, hours],
+        )
+        if pd.isna(periods).any():
+            return None
+        return periods.astype(int)
+
+    @staticmethod
+    def _single_tier_rates(
+        rate_structure, periods, add_adjustment_to_rate, required_unit=None
+    ):
+        """Map periods to rates when every referenced period has exactly one tier."""
+        period_rates = {}
+        for period in np.unique(periods):
+            rows = rate_structure.loc[rate_structure["period"] == period]
+            if len(rows) != 1:
+                return None
+            row = rows.iloc[0]
+            if required_unit is not None and row.get("unit") != required_unit:
+                return None
+            rate = float(row.get("rate", 0))
+            if add_adjustment_to_rate and pd.notna(row.get("adj")):
+                rate += float(row.get("adj"))
+            period_rates[int(period)] = rate
+        return np.fromiter(
+            (period_rates[int(period)] for period in periods),
+            dtype=float,
+            count=len(periods),
+        )
+
+    def _interval_hours(self):
+        """Return the duration represented by every demand timestep."""
+        if len(self.data.index) == 1:
+            return np.ones(1, dtype=float)
+        elapsed = self.data.index.to_series().diff().dt.total_seconds().div(3600)
+        elapsed.iloc[0] = elapsed.iloc[1]
+        return elapsed.to_numpy(dtype=float)
+
+    def _try_vectorized_energy_cost(
+        self,
+        rate_energy,
+        day_type_var_name,
+        add_adjustment_to_rate,
+        use_energy_var,
+        energy_var_name=None,
+        energy_unit=None,
+        demand_var_name=None,
+        demand_unit=None,
+    ):
+        """Calculate single-tier TOU energy charges without row iteration."""
+        periods = self._schedule_periods(
+            rate_energy["energyweekdayschedule"],
+            rate_energy["energyweekendschedule"],
+            day_type_var_name,
+        )
+        if periods is None:
+            return False
+        rates = self._single_tier_rates(
+            rate_energy["energyratestructure"],
+            periods,
+            add_adjustment_to_rate,
+            required_unit="kWh",
+        )
+        if rates is None:
+            return False
+
+        if use_energy_var:
+            usage = self._convert_energy_series_to_kwh(
+                self.data[energy_var_name], energy_unit
+            ).to_numpy()
+            interval_hours = np.zeros(len(self.data), dtype=float)
+        else:
+            interval_hours = self._interval_hours()
+            demand_kw = self._convert_power_series_to_kw(
+                self.data[demand_var_name], demand_unit
+            ).to_numpy()
+            usage = interval_hours * demand_kw
+
+        self.data["energy_usage_kWh"] = usage
+        self.data["energy_charge_rate"] = rates
+        self.data["energy_charge"] = usage * rates
+        self.data["fraction_of_hour"] = interval_hours
+        return True
+
+    def _try_vectorized_tou_demand_rates(
+        self, rate_demand, day_type_var_name, add_adjustment_to_rate
+    ):
+        """Assign single-tier TOU demand periods and rates without row iteration."""
+        periods = self._schedule_periods(
+            rate_demand["demandweekdayschedule"],
+            rate_demand["demandweekendschedule"],
+            day_type_var_name,
+        )
+        if periods is None:
+            return False
+        rates = self._single_tier_rates(
+            rate_demand["demandratestructure"],
+            periods,
+            add_adjustment_to_rate,
+        )
+        if rates is None:
+            return False
+        self.data["demand_peak_period"] = periods
+        self.data["demand_charge_rate"] = rates
+        return True
+
+    def _assign_tiered_tou_demand_rates(
+        self, rate_demand, day_type_var_name, add_adjustment_to_rate
+    ):
+        """Correctness fallback for tiered TOU demand rates."""
+        rate_structure = rate_demand["demandratestructure"]
+        for idx, row in self.data.iterrows():
+            billing_idx = self._get_billing_timestamp(idx, row)
+            day_type = row[day_type_var_name]
+            schedule = (
+                rate_demand["demandweekdayschedule"]
+                if 2 <= day_type <= 6
+                else rate_demand["demandweekendschedule"]
+            )
+            try:
+                period = schedule.loc[billing_idx.month, billing_idx.hour]
+            except KeyError:
+                logging.warning(
+                    f"No demand rate schedule found for month {billing_idx.month}, "
+                    f"hour {billing_idx.hour}. Skipping this timestep."
+                )
+                continue
+
+            period_rows = rate_structure.loc[rate_structure["period"] == period]
+            selected = None
+            demand_kw = self.data.at[idx, "demand_usage_kW"]
+            for _, tier_row in period_rows.iterrows():
+                if demand_kw <= tier_row.get("max", float("inf")):
+                    selected = tier_row
+                    break
+            if selected is None and len(period_rows) > 0:
+                selected = period_rows.iloc[-1]
+            if selected is None:
+                continue
+
+            charge_rate = float(selected.get("rate", 0))
+            if add_adjustment_to_rate and pd.notna(selected.get("adj")):
+                charge_rate += float(selected.get("adj"))
+            self.data.at[idx, "demand_charge_rate"] = charge_rate
+            self.data.at[idx, "demand_peak_period"] = period
+
     def _get_billing_timestamp(self, idx, row):
         """Return the timestamp to use for schedule lookups."""
         dst_time = row.get("DST_time")
@@ -391,28 +582,28 @@ class EnergyCostCalculator:
         self.data["demand_charge_rate"] = 0.0
         self.data["demand_peak_period"] = 0
 
-        # Convert demand usage to kW and store in a new column
-        for idx, row in self.data.iterrows():
-            usage = row[demand_var_name]
-            # Convert usage to kW using helper method
-            usage = self._convert_power_to_kw(usage, demand_unit)
-            self.data.at[idx, "demand_usage_kW"] = usage
+        # Convert the complete demand series at once instead of iterating rows.
+        self.data["demand_usage_kW"] = self._convert_power_series_to_kw(
+            self.data[demand_var_name], demand_unit
+        )
+        billing_times = self._billing_datetime_index()
+        billing_months = billing_times.to_period("M")
 
         # Case 1: flat demand structure
         if "flatdemandstructure" in rate_demand:
             # Get maximum monthly demand index
-            monthly_max_demand_indexes = self.data.groupby(self.data.index.month)[
+            monthly_max_demand_indexes = self.data.groupby(billing_months)[
                 "demand_usage_kW"
             ].idxmax()
 
             # Get flat demand charge for each month
             for (
-                month_num,
+                billing_month,
                 monthly_max_demand_index,
             ) in monthly_max_demand_indexes.items():
-                rate_demand_period = rate_demand["flatdemandmonths"].loc[month_num][
-                    "flat"
-                ]
+                rate_demand_period = rate_demand["flatdemandmonths"].loc[
+                    billing_month.month
+                ]["flat"]
                 rate_demand_structure_df = rate_demand["flatdemandstructure"]
 
                 # Get the rate for the current period and maximum monthly kW based on the tiered structure
@@ -475,77 +666,15 @@ class EnergyCostCalculator:
 
         # Case 2: time-of-use demand structure (additive to flat demand)
         if "demandratestructure" in rate_demand:
-            # First pass: assign rate period to each timestep
-            for idx, row in self.data.iterrows():
-                billing_idx = self._get_billing_timestamp(idx, row)
-                # Get the rate period
-                day_type = row[day_type_var_name]
-                if (day_type >= 2) and (day_type <= 6):
-                    rate_demand_schedule = rate_demand[f"demandweekdayschedule"]
-                else:  # all other days are using weekend schedule
-                    rate_demand_schedule = rate_demand[f"demandweekendschedule"]
-
-                rate_demand_structure_df = rate_demand[f"demandratestructure"]
-                if "period" not in rate_demand_structure_df.columns:
-                    raise ValueError(
-                        f"Demand rate structure for rate '{self.rate_label}' is missing a 'period' column."
-                    )
-                try:
-                    rate_demand_period = rate_demand_schedule.loc[
-                        billing_idx.month, billing_idx.hour
-                    ]
-                except KeyError:
-                    logging.warning(
-                        f"No rate schedule found for month {billing_idx.month}, hour {billing_idx.hour}. Skipping this timestep."
-                    )
-                    continue
-
-                rate_demand_structure_df = rate_demand_structure_df[
-                    rate_demand_structure_df["period"] == rate_demand_period
-                ]
-
-                # Get the rate for the current period
-                selected_tier = 0
-                tier_found = False
-                for _, tier_row in rate_demand_structure_df.iterrows():
-                    max_kW = (
-                        tier_row.get("max", float("inf"))
-                        if "max" in tier_row.index
-                        else float("inf")
-                    )
-                    if row["demand_usage_kW"] > max_kW:
-                        continue
-                    else:
-                        selected_tier = tier_row["tier"]
-                        tier_found = True
-                        break
-
-                if not tier_found:
-                    # Use the last (highest) tier if usage exceeds all tier maxes
-                    selected_tier = rate_demand_structure_df.iloc[-1]["tier"]
-
-                period_tier_rate = rate_demand_structure_df.loc[
-                    (rate_demand_structure_df["period"] == rate_demand_period)
-                    & (rate_demand_structure_df["tier"] == selected_tier)
-                ]
-                charge_rate = (
-                    period_tier_rate["rate"].values[0]
-                    if len(period_tier_rate) > 0
-                    else 0
+            if not self._try_vectorized_tou_demand_rates(
+                rate_demand, day_type_var_name, add_adjustment_to_rate
+            ):
+                self._assign_tiered_tou_demand_rates(
+                    rate_demand, day_type_var_name, add_adjustment_to_rate
                 )
-                if (
-                    "adj" in period_tier_rate.columns
-                    and len(period_tier_rate) > 0
-                    and add_adjustment_to_rate
-                ):
-                    adjustment = period_tier_rate["adj"].values[0]
-                    charge_rate += adjustment
-
-                self.data.at[idx, "demand_charge_rate"] = charge_rate
-                self.data.at[idx, "demand_peak_period"] = rate_demand_period
 
             # Second pass: find monthly peak for each TOU period
-            for month_num, month_data in self.data.groupby(self.data.index.month):
+            for _, month_data in self.data.groupby(billing_months):
                 for period in month_data["demand_peak_period"].unique():
                     period_data = month_data[month_data["demand_peak_period"] == period]
                     if len(period_data) > 0:
@@ -717,6 +846,21 @@ class EnergyCostCalculator:
         self.data["energy_usage_kWh"] = 0.0
         self.data["energy_charge_rate"] = 0.0
         self.data["fraction_of_hour"] = 0.0
+        if self._try_vectorized_energy_cost(
+            rate_energy,
+            day_type_var_name,
+            add_adjustment_to_rate,
+            use_energy_var,
+            energy_var_name=energy_var_name if use_energy_var else None,
+            energy_unit=energy_unit if use_energy_var else None,
+            demand_var_name=demand_var_name if not use_energy_var else None,
+            demand_unit=demand_unit if not use_energy_var else None,
+        ):
+            self._energy_cost_calculated = True
+            return self.data["energy_charge"].sum()
+
+        # Tiered energy rates depend on cumulative monthly use and retain the
+        # row-wise implementation as a correctness fallback.
         cumulative_kWh = 0
         current_month = None
         for idx, row in self.data.iterrows():

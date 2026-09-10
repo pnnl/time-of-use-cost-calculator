@@ -14,6 +14,7 @@ OpenEI API key sign-up: https://apps.openei.org/services/api/signup/
 - Multiple meter support
 - Unit validation and conversion (W, kW, MW)
 - Variable timestep support
+- Vectorized single-tier TOU energy and demand calculations
 - Fuel adjustments (not yet implemented)
 - Coincident demand charges (not yet implemented)
 
@@ -188,6 +189,14 @@ poetry run python test_calculator_comparison.py
 ```
 
 ## Development
+
+### Vectorized calculations
+
+Single-tier TOU tariffs use NumPy schedule indexing and pandas billing-period
+grouping instead of iterating through every usage row. Tiered tariffs retain the
+row-wise calculation as a correctness fallback because their rate depends on
+cumulative usage or the demand tier reached. This substantially improves runtime
+for long subhourly simulations without changing the public API or result columns.
 
 ### Code Formatting
 
