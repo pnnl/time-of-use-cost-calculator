@@ -8,6 +8,7 @@ import sys
 import os
 import json
 import tempfile
+from unittest.mock import patch
 from datetime import datetime
 import pandas as pd
 import numpy as np
@@ -343,6 +344,54 @@ class TestVariableTimestep(unittest.TestCase):
 
         self.assertIsNotNone(calculator.data)
         self.assertEqual(len(calculator.data), 10)
+
+
+class TestVectorizedCalculation(unittest.TestCase):
+    """Verify common single-tier tariffs do not iterate over usage rows."""
+
+    def test_single_tier_energy_and_demand_are_vectorized(self):
+        dates = pd.date_range("2023-01-01", periods=8, freq="15min")
+        data = pd.DataFrame(
+            {
+                "Electricity:Facility [kWh](TimeStep)": [1.0] * 8,
+                "Electricity:Facility [kW](TimeStep)": np.arange(1.0, 9.0),
+                "Environment:Site Day Type Index [](TimeStep)": [1] * 8,
+            },
+            index=dates,
+        )
+        schedule = [[0] * 24 for _ in range(12)]
+        rate = {
+            "energyunits": "kWh",
+            "demandunits": "kW",
+            "energyratestructure": [[{"rate": 0.10, "unit": "kWh"}]],
+            "energyweekdayschedule": schedule,
+            "energyweekendschedule": schedule,
+            "flatdemandstructure": [[{"rate": 15.0}]],
+            "flatdemandmonths": [0] * 12,
+            "demandratestructure": [[{"rate": 2.0}]],
+            "demandweekdayschedule": schedule,
+            "demandweekendschedule": schedule,
+        }
+        calculator = EnergyCostCalculator(
+            data=data,
+            include_energy_cost=True,
+            include_demand_cost=True,
+            electricity_energy_var_name="Electricity:Facility [kWh](TimeStep)",
+            electricity_demand_var_name="Electricity:Facility [kW](TimeStep)",
+        )
+        calculator.rate = rate
+
+        with patch.object(
+            calculator.data,
+            "iterrows",
+            side_effect=AssertionError("usage rows must not be iterated"),
+        ):
+            total = calculator.get_total_cost()
+
+        self.assertAlmostEqual(calculator.data["energy_charge"].sum(), 0.8)
+        self.assertAlmostEqual(calculator.data["demand_charge_flat"].sum(), 120.0)
+        self.assertAlmostEqual(calculator.data["demand_charge_tou"].sum(), 16.0)
+        self.assertAlmostEqual(total, 136.8)
 
 
 class TestErrorHandling(unittest.TestCase):
