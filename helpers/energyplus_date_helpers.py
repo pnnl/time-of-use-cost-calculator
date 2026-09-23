@@ -99,45 +99,26 @@ class DateTimeEP:
             pd.DataFrame: The DataFrame with added DST-adjusted datetime column and
                 optionally updated day type column.
         """
-        timestep = int(
-            len(self.df.loc[self.df.index[0].date().strftime("%m/%d/%Y")]) / 24
-        )
+        if day_type_col is not None:
+            day_type_lookup = self.df[day_type_col].to_dict()
+
         dst_dt_list = []
         day_type_list = []
-        if day_type_col is not None:
-            old_day_type_list = self.df[day_type_col].tolist()
-        in_dst = False
-        dst_action = "nothing"
-        dtlist_i = 0
-        timestep_counter = None
         for i, row in self.df.iterrows():
-            if dst_action == "nothing":
-                # dst switch detection
-                dst_status = row[dst_type_col]
-                if dst_status == 1 and in_dst == False:
-                    dst_action = "skip next hour"
-                    timestep_counter = timestep
-                if dst_status == 0 and in_dst == True:
-                    dst_action = "repeat next hour"
-                    timestep_counter = timestep
-            else:
-                # check timestep counter
-                if timestep_counter == 1:  # dst change completed when countdown to 1
-                    # dst action
-                    if dst_action == "skip next hour":
-                        dtlist_i += timestep
-                        in_dst = True
-                    if dst_action == "repeat next hour":
-                        dtlist_i -= timestep
-                        in_dst = False
-                    dst_action = "nothing"
-                    timestep_counter = None
-                else:
-                    timestep_counter -= 1
-            dst_dt_list.append(self.dt_list[dtlist_i])
+            in_dst = row[dst_type_col] == 1
+            dst_dt = i + datetime.timedelta(hours=1) if in_dst else i
+            dst_dt_list.append(dst_dt)
             if day_type_col is not None:
-                day_type_list.append(old_day_type_list[dtlist_i])
-            dtlist_i += 1
+                if in_dst and dst_dt.date() != i.date():
+                    # Midnight crossing: use day_type of the next EnergyPlus hour
+                    day_type_list.append(
+                        day_type_lookup.get(
+                            i + datetime.timedelta(hours=1), row[day_type_col]
+                        )
+                    )
+                else:
+                    day_type_list.append(row[day_type_col])
+
         self.df[dst_dt_col] = dst_dt_list
         if day_type_col is not None:
             self.df[day_type_col] = day_type_list
