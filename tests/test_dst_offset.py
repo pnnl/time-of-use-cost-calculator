@@ -34,6 +34,11 @@ def _build_dst_df():
     return df
 
 
+@pytest.fixture(autouse=True, scope="module")
+def write_dst_csv():
+    _write_output_csv(_build_dst_df())
+
+
 def test_dst_offset_is_one_hour():
     """Every DST=1 row should have DST_time exactly 1 hour ahead of its EnergyPlus index."""
     df = _build_dst_df()
